@@ -7,9 +7,10 @@ import '../services/api_service.dart';
 class GameProvider with ChangeNotifier {
   GameModel? _currentGame;
   List<List<int>> _playerGrid = [];
+  List<List<int>> _solutionGrid = []; // NOUVEAU : Pour le mode Story
   List<List<bool>> _initialCells = [];
   List<List<bool>> _errorCells = [];
-  List<List<Set<int>>> _notes = []; // NOUVEAU : Notes pour chaque case
+  List<List<Set<int>>> _notes = []; // Notes pour chaque case
   
   Timer? _timer;
   Timer? _autoSaveTimer;
@@ -17,7 +18,8 @@ class GameProvider with ChangeNotifier {
   int _mistakes = 0;
   bool _isCompleted = false;
   bool _isLoading = false;
-  bool _isNoteMode = false; // NOUVEAU : Mode notes activé/désactivé
+  bool _isNoteMode = false; // Mode notes activé/désactivé
+  bool _isPaused = false; // NOUVEAU : Pour gérer la pause
   
   List<BoosterModel> _boosters = [];
   String? _selectedBooster;
@@ -32,11 +34,32 @@ class GameProvider with ChangeNotifier {
   List<List<Set<int>>> get notes => _notes;
   int get elapsedSeconds => _elapsedSeconds;
   int get mistakes => _mistakes;
-  bool get isCompleted => _isCompleted;
   bool get isLoading => _isLoading;
   bool get isNoteMode => _isNoteMode;
   List<BoosterModel> get boosters => _boosters;
   String? get selectedBooster => _selectedBooster;
+  
+  // MODIFIÉ : Getter isCompleted avec support du mode Story
+  bool get isCompleted {
+    // Check if all cells are filled and correct
+    for (int i = 0; i < 9; i++) {
+      for (int j = 0; j < 9; j++) {
+        if (_playerGrid[i][j] == 0) return false;
+        
+        // If we have a solution grid (story mode), check against it
+        if (_solutionGrid.isNotEmpty) {
+          if (_playerGrid[i][j] != _solutionGrid[i][j]) return false;
+        }
+      }
+    }
+    
+    // Additional validation for non-story mode
+    if (_solutionGrid.isEmpty) {
+      return _validateSudoku();
+    }
+    
+    return true;
+  }
   
   String get formattedTime {
     final hours = _elapsedSeconds ~/ 3600;
@@ -53,6 +76,78 @@ class GameProvider with ChangeNotifier {
   void toggleNoteMode() {
     _isNoteMode = !_isNoteMode;
     notifyListeners();
+  }
+  
+  // NOUVEAU : Initialize game for Story Mode
+  void initializeStoryGame(
+    List<List<int>> grid,
+    List<List<int>> solution,
+  ) {
+    _currentGame = null; // Story mode doesn't use game model
+    _playerGrid = grid.map((row) => List<int>.from(row)).toList();
+    _solutionGrid = solution.map((row) => List<int>.from(row)).toList();
+    
+    // Mark initial cells
+    _initialCells = List.generate(
+      9,
+      (i) => List.generate(9, (j) => grid[i][j] != 0),
+    );
+    
+    // Reset error cells
+    _errorCells = List.generate(9, (_) => List.generate(9, (_) => false));
+    
+    // Reset notes
+    _notes = List.generate(9, (_) => List.generate(9, (_) => <int>{}));
+    
+    // Reset game state
+    _mistakes = 0;
+    _isNoteMode = false;
+    _isPaused = false;
+    
+    notifyListeners();
+  }
+  
+  // NOUVEAU : Validate Sudoku helper method
+  bool _validateSudoku() {
+    // Validate rows
+    for (int i = 0; i < 9; i++) {
+      final seen = <int>{};
+      for (int j = 0; j < 9; j++) {
+        if (_playerGrid[i][j] != 0) {
+          if (seen.contains(_playerGrid[i][j])) return false;
+          seen.add(_playerGrid[i][j]);
+        }
+      }
+    }
+    
+    // Validate columns
+    for (int j = 0; j < 9; j++) {
+      final seen = <int>{};
+      for (int i = 0; i < 9; i++) {
+        if (_playerGrid[i][j] != 0) {
+          if (seen.contains(_playerGrid[i][j])) return false;
+          seen.add(_playerGrid[i][j]);
+        }
+      }
+    }
+    
+    // Validate 3x3 boxes
+    for (int box = 0; box < 9; box++) {
+      final seen = <int>{};
+      final startRow = (box ~/ 3) * 3;
+      final startCol = (box % 3) * 3;
+      
+      for (int i = startRow; i < startRow + 3; i++) {
+        for (int j = startCol; j < startCol + 3; j++) {
+          if (_playerGrid[i][j] != 0) {
+            if (seen.contains(_playerGrid[i][j])) return false;
+            seen.add(_playerGrid[i][j]);
+          }
+        }
+      }
+    }
+    
+    return true;
   }
   
   // Check for active game on startup
@@ -198,8 +293,13 @@ class GameProvider with ChangeNotifier {
       // Effacer les notes de cette case
       _notes[row][col].clear();
       
+      // MODIFIÉ : Check contre solution (Story mode) ou currentGame
+      int correctValue = _solutionGrid.isNotEmpty 
+          ? _solutionGrid[row][col] 
+          : _currentGame!.solution[row][col];
+      
       // Check if correct
-      if (value != 0 && value != _currentGame!.solution[row][col]) {
+      if (value != 0 && value != correctValue) {
         _errorCells[row][col] = true;
         _mistakes++;
         
@@ -238,7 +338,14 @@ class GameProvider with ChangeNotifier {
   bool _checkCompletion() {
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 9; j++) {
-        if (_playerGrid[i][j] == 0 || _playerGrid[i][j] != _currentGame!.solution[i][j]) {
+        if (_playerGrid[i][j] == 0) return false;
+        
+        // Check contre solution (Story mode) ou currentGame
+        int correctValue = _solutionGrid.isNotEmpty 
+            ? _solutionGrid[i][j] 
+            : _currentGame!.solution[i][j];
+            
+        if (_playerGrid[i][j] != correctValue) {
           return false;
         }
       }
@@ -251,13 +358,16 @@ class GameProvider with ChangeNotifier {
     _timer?.cancel();
     _autoSaveTimer?.cancel();
     
-    try {
-      await _apiService.post('/game/${_currentGame!.id}/complete', {
-        'time_elapsed': _elapsedSeconds,
-        'mistakes': _mistakes,
-      });
-    } catch (e) {
-      print('Error completing game: $e');
+    // Only call API if we have a current game (not Story mode)
+    if (_currentGame != null) {
+      try {
+        await _apiService.post('/game/${_currentGame!.id}/complete', {
+          'time_elapsed': _elapsedSeconds,
+          'mistakes': _mistakes,
+        });
+      } catch (e) {
+        print('Error completing game: $e');
+      }
     }
     
     notifyListeners();
@@ -279,7 +389,12 @@ class GameProvider with ChangeNotifier {
     switch (boosterType) {
       case 'reveal_cell':
         if (row != null && col != null && !_initialCells[row][col]) {
-          _playerGrid[row][col] = _currentGame!.solution[row][col];
+          // MODIFIÉ : Support pour Story mode
+          int correctValue = _solutionGrid.isNotEmpty 
+              ? _solutionGrid[row][col] 
+              : _currentGame!.solution[row][col];
+          
+          _playerGrid[row][col] = correctValue;
           _initialCells[row][col] = true;
           _notes[row][col].clear();
         }
@@ -297,12 +412,17 @@ class GameProvider with ChangeNotifier {
       case 'swap_cells':
         for (int i = 0; i < 9; i++) {
           for (int j = 0; j < 9; j++) {
-            if (!_initialCells[i][j] && 
-                _playerGrid[i][j] != 0 && 
-                _playerGrid[i][j] != _currentGame!.solution[i][j]) {
-              _playerGrid[i][j] = _currentGame!.solution[i][j];
-              _notes[i][j].clear();
-              break;
+            if (!_initialCells[i][j] && _playerGrid[i][j] != 0) {
+              // MODIFIÉ : Support pour Story mode
+              int correctValue = _solutionGrid.isNotEmpty 
+                  ? _solutionGrid[i][j] 
+                  : _currentGame!.solution[i][j];
+              
+              if (_playerGrid[i][j] != correctValue) {
+                _playerGrid[i][j] = correctValue;
+                _notes[i][j].clear();
+                break;
+              }
             }
           }
         }
@@ -354,6 +474,7 @@ class GameProvider with ChangeNotifier {
     
     _currentGame = null;
     _playerGrid = [];
+    _solutionGrid = []; // AJOUTÉ : Reset solution grid
     _initialCells = [];
     _errorCells = [];
     _notes = [];
@@ -361,6 +482,7 @@ class GameProvider with ChangeNotifier {
     _mistakes = 0;
     _isCompleted = false;
     _isNoteMode = false;
+    _isPaused = false; // AJOUTÉ
     _selectedBooster = null;
     _boosters = [];
     
