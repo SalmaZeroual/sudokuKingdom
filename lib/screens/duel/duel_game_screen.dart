@@ -6,6 +6,7 @@ import '../../providers/friends_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/sudoku_grid.dart';
 import '../../widgets/number_pad.dart';
+import '../duel/duel_game_screen.dart';
 
 class DuelGameScreen extends StatefulWidget {
   const DuelGameScreen({Key? key}) : super(key: key);
@@ -14,9 +15,33 @@ class DuelGameScreen extends StatefulWidget {
   State<DuelGameScreen> createState() => _DuelGameScreenState();
 }
 
-class _DuelGameScreenState extends State<DuelGameScreen> {
+class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStateMixin {
   int? selectedRow;
   int? selectedCol;
+  
+  late AnimationController _warningController;
+  late Animation<double> _warningAnimation;
+  
+  @override
+  void initState() {
+    super.initState();
+    
+    // Animation pour le bandeau d'avertissement
+    _warningController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..repeat(reverse: true);
+    
+    _warningAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _warningController, curve: Curves.easeInOut),
+    );
+  }
+  
+  @override
+  void dispose() {
+    _warningController.dispose();
+    super.dispose();
+  }
   
   @override
   Widget build(BuildContext context) {
@@ -53,75 +78,195 @@ class _DuelGameScreenState extends State<DuelGameScreen> {
             return shouldPop ?? false;
           },
           child: Scaffold(
-            body: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.center,
-                  colors: [AppColors.red, Colors.white],
-                  stops: [0.0, 0.3],
-                ),
-              ),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    // Header with timer
-                    _buildHeader(duelProvider),
-                    
-                    // Players progress bars
-                    _buildProgressBars(duelProvider, duel),
-                    
-                    // Opponent message overlay
-                    if (duelProvider.lastOpponentMessage != null)
-                      _buildOpponentMessage(duelProvider.lastOpponentMessage!),
-                    
-                    // Sudoku Grid
-                    Expanded(
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: SudokuGrid(
-                            grid: duelProvider.playerGrid,
-                            initialCells: duelProvider.initialCells,
-                            errorCells: duelProvider.errorCells,
-                            notes: List.generate(9, (_) => List.generate(9, (_) => <int>{})),
-                            selectedRow: selectedRow,
-                            selectedCol: selectedCol,
-                            onCellTap: (row, col) {
-                              setState(() {
-                                selectedRow = row;
-                                selectedCol = col;
-                              });
-                            },
+            body: Stack(
+              children: [
+                // Main content
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.center,
+                      colors: [AppColors.red, Colors.white],
+                      stops: [0.0, 0.3],
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        // Header with timer
+                        _buildHeader(duelProvider),
+                        
+                        // Players progress bars
+                        _buildProgressBars(duelProvider, duel),
+                        
+                        // Opponent message overlay
+                        if (duelProvider.lastOpponentMessage != null)
+                          _buildOpponentMessage(duelProvider.lastOpponentMessage!),
+                        
+                        // Sudoku Grid
+                        Expanded(
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: SudokuGrid(
+                                grid: duelProvider.playerGrid,
+                                initialCells: duelProvider.initialCells,
+                                errorCells: duelProvider.errorCells,
+                                notes: List.generate(9, (_) => List.generate(9, (_) => <int>{})),
+                                selectedRow: selectedRow,
+                                selectedCol: selectedCol,
+                                onCellTap: (row, col) {
+                                  setState(() {
+                                    selectedRow = row;
+                                    selectedCol = col;
+                                  });
+                                },
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        
+                        // Action buttons (messages, add friend)
+                        _buildActionButtons(duelProvider),
+                        
+                        // Number Pad
+                        NumberPad(
+                          isNoteMode: false,
+                          grid: duelProvider.playerGrid,
+                          onNumberTap: (number) {
+                            if (selectedRow != null && selectedCol != null) {
+                              if (number == 0) {
+                                duelProvider.clearCell(selectedRow!, selectedCol!);
+                              } else {
+                                duelProvider.setCellValue(selectedRow!, selectedCol!, number);
+                              }
+                            }
+                          },
+                        ),
+                      ],
                     ),
-                    
-                    // Action buttons (messages, add friend)
-                    _buildActionButtons(duelProvider),
-                    
-                    // Number Pad
-                    NumberPad(
-                      isNoteMode: false,
-                      grid: duelProvider.playerGrid,
-                      onNumberTap: (number) {
-                        if (selectedRow != null && selectedCol != null) {
-                          if (number == 0) {
-                            duelProvider.clearCell(selectedRow!, selectedCol!);
-                          } else {
-                            duelProvider.setCellValue(selectedRow!, selectedCol!, number);
-                          }
-                        }
-                      },
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                
+                // ⚠️ BANDEAU D'AVERTISSEMENT (flottant en haut)
+                if (duelProvider.myMistakes >= 2)
+                  _buildWarningBanner(duelProvider.myMistakes),
+              ],
             ),
           ),
         );
       },
+    );
+  }
+  
+  // ⚠️ BANDEAU D'AVERTISSEMENT ROUGE/NOIR
+  Widget _buildWarningBanner(int mistakes) {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: AnimatedBuilder(
+          animation: _warningAnimation,
+          builder: (context, child) {
+            return Opacity(
+              opacity: _warningAnimation.value,
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Colors.black, AppColors.red],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.red, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.red.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Icône d'avertissement animée
+                    ScaleTransition(
+                      scale: _warningAnimation,
+                      child: const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    
+                    // Texte
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            mistakes == 2 ? 'ATTENTION !' : 'DANGER !',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            mistakes == 2 
+                                ? 'Encore 1 erreur = ÉLIMINATION'
+                                : 'Prochaine erreur = ÉLIMINATION',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Compteur de vies
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${3 - mistakes}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Text(
+                            '❤️',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
   
@@ -400,7 +545,7 @@ class _DuelGameScreenState extends State<DuelGameScreen> {
           
           const SizedBox(width: 12),
           
-          // Add friend button (if opponent is random)
+          // Add friend button
           Expanded(
             child: ElevatedButton.icon(
               onPressed: () {
@@ -490,8 +635,6 @@ class _DuelGameScreenState extends State<DuelGameScreen> {
     final duel = duelProvider.currentDuel;
     if (duel == null) return;
     
-    // ✅ FIX: Récupérer l'ID directement depuis duel au lieu de _getCurrentUserId()
-    // Déterminer qui est l'adversaire
     final opponentId = duel.player2Id;
     
     if (opponentId == null) return;
@@ -543,8 +686,6 @@ class _DuelGameScreenState extends State<DuelGameScreen> {
   
   void _showResultDialog(BuildContext context, DuelProvider duelProvider) {
     final duel = duelProvider.currentDuel!;
-    
-    // ✅ FIX: Déterminer si on a gagné en comparant player1_id avec notre duel
     final isWinner = duel.winnerId == duel.player1Id;
     
     showDialog(
@@ -594,8 +735,8 @@ class _DuelGameScreenState extends State<DuelGameScreen> {
           TextButton(
             onPressed: () {
               duelProvider.abandonDuel();
-              Navigator.of(context).pop(); // Close dialog
-              Navigator.of(context).pop(); // Close game screen
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
             },
             child: const Text('Retour'),
           ),
@@ -603,8 +744,8 @@ class _DuelGameScreenState extends State<DuelGameScreen> {
             ElevatedButton(
               onPressed: () {
                 duelProvider.abandonDuel();
-                Navigator.of(context).pop(); // Close dialog
-                Navigator.of(context).pop(); // Close game screen
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.blue,
@@ -639,8 +780,8 @@ class _DuelGameScreenState extends State<DuelGameScreen> {
             onPressed: () {
               final duelProvider = Provider.of<DuelProvider>(context, listen: false);
               duelProvider.abandonDuel();
-              Navigator.of(context).pop(); // Close dialog
-              Navigator.of(context).pop(); // Close game screen
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.red,

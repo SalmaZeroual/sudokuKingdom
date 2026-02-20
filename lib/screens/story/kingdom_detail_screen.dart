@@ -362,19 +362,47 @@ class _KingdomDetailScreenState extends State<KingdomDetailScreen> {
     );
     
     if (shouldStart == true && context.mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => StoryGameScreen(
-            chapter: chapter,
-            kingdomColor: _kingdomColor,
-          ),
+      // CHARGER LES DÉTAILS COMPLETS DU CHAPITRE (avec grid et solution)
+      final storyProvider = Provider.of<StoryProvider>(context, listen: false);
+      
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: CircularProgressIndicator(color: _kingdomColor),
         ),
-      ).then((_) {
-        // Reload chapters after completing a chapter
-        Provider.of<StoryProvider>(context, listen: false)
-            .loadChapters(widget.kingdom.id);
-      });
+      );
+      
+      final fullChapter = await storyProvider.getChapterDetails(chapter.id);
+      
+      // Close loading
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+      
+      if (fullChapter != null && context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StoryGameScreen(
+              chapter: fullChapter,
+              kingdomColor: _kingdomColor,
+            ),
+          ),
+        ).then((_) {
+          // Reload chapters after completing a chapter
+          Provider.of<StoryProvider>(context, listen: false)
+              .loadChapters(widget.kingdom.id);
+        });
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: Impossible de charger le chapitre'),
+            backgroundColor: AppColors.red,
+          ),
+        );
+      }
     }
   }
   

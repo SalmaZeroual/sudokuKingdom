@@ -282,7 +282,13 @@ class _DateSeparator extends StatelessWidget {
     } else if (messageDate == yesterday) {
       dateText = 'Hier';
     } else {
-      dateText = DateFormat('d MMM yyyy', 'fr_FR').format(date);
+      // ✅ FIX: Gestion d'erreur pour DateFormat
+      try {
+        dateText = DateFormat('d MMM yyyy', 'fr_FR').format(date);
+      } catch (e) {
+        // Fallback si la locale n'est pas initialisée
+        dateText = DateFormat('dd/MM/yyyy').format(date);
+      }
     }
     
     return Padding(
@@ -344,7 +350,7 @@ class _MessageBubble extends StatelessWidget {
                     message.content,
                     style: TextStyle(
                       fontSize: 15,
-                      color: isMe ? Colors.white : AppColors.gray400,
+                      color: isMe ? Colors.white : AppColors.gray900,
                     ),
                   ),
                   const SizedBox(height: 4),

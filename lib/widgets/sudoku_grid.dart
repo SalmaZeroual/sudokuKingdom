@@ -184,7 +184,7 @@ class _SudokuCell extends StatelessWidget {
                           ? AppColors.gray900 
                           : hasSameNumber
                               ? AppColors.highlightSameNumber 
-                              : AppColors.blue,
+                              : AppColors.highlightSameNumber,
                     ),
                   )
                 : notes.isNotEmpty

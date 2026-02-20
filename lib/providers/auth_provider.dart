@@ -146,7 +146,7 @@ class AuthProvider with ChangeNotifier {
   }
   
   // ==========================================
-  // PASSWORD RESET METHODS - NOUVEAU
+  // PASSWORD RESET METHODS
   // ==========================================
   
   // Request password reset
@@ -204,6 +204,70 @@ class AuthProvider with ChangeNotifier {
       await apiService.post('/auth/reset-password', {
         'email': email,
         'code': code,
+        'newPassword': newPassword,
+      });
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // ==========================================
+  // NOUVEAU : PROFILE UPDATE METHODS
+  // ==========================================
+  
+  /// Update username
+  Future<bool> updateUsername(String newUsername) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    
+    try {
+      final response = await apiService.put('/user/profile', {
+        'username': newUsername,
+      });
+      
+      // Update local user
+      if (_user != null) {
+        _user = UserModel(
+          id: _user!.id,
+          username: newUsername,
+          email: _user!.email,
+          xp: _user!.xp,
+          level: _user!.level,
+          avatar: _user!.avatar,
+          wins: _user!.wins,
+          streak: _user!.streak,
+          league: _user!.league,
+        );
+      }
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  /// Change password (when user is logged in)
+  Future<bool> changePassword(String oldPassword, String newPassword) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    
+    try {
+      await apiService.put('/user/password', {
+        'oldPassword': oldPassword,
         'newPassword': newPassword,
       });
       

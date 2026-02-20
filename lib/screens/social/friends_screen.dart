@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/duel_provider.dart';
 import '../../config/theme.dart';
 import '../../models/friend_model.dart';
 import 'friend_profile_screen.dart';
 import 'add_friend_screen.dart';
 import '../chat/chat_screen.dart';
+import '../duel/duel_game_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({Key? key}) : super(key: key);
@@ -15,22 +17,27 @@ class FriendsScreen extends StatefulWidget {
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
-class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProviderStateMixin {
+class _FriendsScreenState extends State<FriendsScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    
-    // Load data
+    // ✅ 3 onglets : Amis | Demandes | Invitations Duel
+    _tabController = TabController(length: 3, vsync: this);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
       friendsProvider.loadFriends();
       friendsProvider.loadPendingRequests();
+
+      // ✅ Charger les invitations de duel en attente
+      final duelProvider = Provider.of<DuelProvider>(context, listen: false);
+      duelProvider.loadPendingDuelInvitations();
     });
   }
-  
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -40,12 +47,17 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final friendsProvider = Provider.of<FriendsProvider>(context);
-    
+    final duelProvider = Provider.of<DuelProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Amis'),
+        // ✅ FIX ligne jaune/noire : couleur explicite pour éviter le debug banner
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         actions: [
-          // Pending requests badge
           if (friendsProvider.pendingCount > 0)
             Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -69,51 +81,66 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             ),
           IconButton(
             icon: const Icon(Icons.person_add),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AddFriendScreen()),
-              );
-            },
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AddFriendScreen()),
+            ),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.blue,
-          labelColor: AppColors.blue,
-          unselectedLabelColor: AppColors.gray500,
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.people),
-                  const SizedBox(width: 8),
-                  Text('Amis (${friendsProvider.friendCount})'),
-                ],
-              ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          // ✅ Container blanc pour éviter la ligne jaune/noire du TabBar
+          child: Container(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: AppColors.blue,
+              labelColor: AppColors.blue,
+              unselectedLabelColor: AppColors.gray500,
+              tabs: [
+                // Onglet 1 — Amis
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.people, size: 18),
+                      const SizedBox(width: 6),
+                      Text('Amis (${friendsProvider.friendCount})'),
+                    ],
+                  ),
+                ),
+                // Onglet 2 — Demandes d'amitié
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.mail, size: 18),
+                      const SizedBox(width: 6),
+                      const Text('Demandes'),
+                      if (friendsProvider.pendingCount > 0) ...[
+                        const SizedBox(width: 4),
+                        _BadgeDot(color: AppColors.red),
+                      ],
+                    ],
+                  ),
+                ),
+                // Onglet 3 — Invitations Duel reçues
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.sports_kabaddi, size: 18),
+                      const SizedBox(width: 6),
+                      const Text('Duels'),
+                      if (duelProvider.pendingInvitationsCount > 0) ...[
+                        const SizedBox(width: 4),
+                        _BadgeDot(color: AppColors.orange),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.mail),
-                  const SizedBox(width: 8),
-                  Text('Demandes (${friendsProvider.pendingCount})'),
-                  if (friendsProvider.pendingCount > 0) ...[
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: AppColors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(minWidth: 8, minHeight: 8),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
       body: TabBarView(
@@ -121,31 +148,46 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         children: [
           _FriendsListTab(),
           _PendingRequestsTab(),
+          _DuelInvitationsTab(),
         ],
       ),
     );
   }
 }
 
+/// Petit point de notification réutilisable
+class _BadgeDot extends StatelessWidget {
+  final Color color;
+  const _BadgeDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════
+// ONGLET 1 : Liste des amis
+// ══════════════════════════════════════════════
 class _FriendsListTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final friendsProvider = Provider.of<FriendsProvider>(context);
-    
+
     if (friendsProvider.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (friendsProvider.friends.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.people_outline,
-              size: 80,
-              color: AppColors.gray300,
-            ),
+            Icon(Icons.people_outline, size: 80, color: AppColors.gray300),
             const SizedBox(height: 16),
             Text(
               'Aucun ami pour le moment',
@@ -158,18 +200,13 @@ class _FriendsListTab extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Ajoutez des amis pour jouer ensemble !',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.gray400,
-              ),
+              style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AddFriendScreen()),
-                );
-              },
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AddFriendScreen()),
+              ),
               icon: const Icon(Icons.person_add),
               label: const Text('Ajouter des amis'),
               style: ElevatedButton.styleFrom(
@@ -182,13 +219,13 @@ class _FriendsListTab extends StatelessWidget {
         ),
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: () => friendsProvider.loadFriends(),
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: friendsProvider.friends.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 12),
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final friend = friendsProvider.friends[index];
           return _FriendCard(friend: friend);
@@ -198,39 +235,34 @@ class _FriendsListTab extends StatelessWidget {
   }
 }
 
+// ══════════════════════════════════════════════
+// ONGLET 2 : Demandes d'amitié reçues
+// ══════════════════════════════════════════════
 class _PendingRequestsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final friendsProvider = Provider.of<FriendsProvider>(context);
-    
+
     if (friendsProvider.pendingRequests.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.mail_outline,
-              size: 80,
-              color: AppColors.gray300,
-            ),
+            Icon(Icons.mail_outline, size: 80, color: AppColors.gray300),
             const SizedBox(height: 16),
             Text(
               'Aucune demande en attente',
-              style: TextStyle(
-                fontSize: 18,
-                color: AppColors.gray500,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(fontSize: 18, color: AppColors.gray500),
             ),
           ],
         ),
       );
     }
-    
+
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: friendsProvider.pendingRequests.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final request = friendsProvider.pendingRequests[index];
         return _PendingRequestCard(request: request);
@@ -239,21 +271,246 @@ class _PendingRequestsTab extends StatelessWidget {
   }
 }
 
+// ══════════════════════════════════════════════
+// ONGLET 3 : Invitations de Duel reçues
+// ══════════════════════════════════════════════
+class _DuelInvitationsTab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final duelProvider = Provider.of<DuelProvider>(context);
+
+    if (duelProvider.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (duelProvider.pendingInvitations.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.sports_kabaddi, size: 80, color: AppColors.gray300),
+            const SizedBox(height: 16),
+            Text(
+              'Aucune invitation de duel',
+              style: TextStyle(
+                fontSize: 18,
+                color: AppColors.gray500,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Vos amis peuvent vous inviter à jouer !',
+              style: TextStyle(fontSize: 14, color: AppColors.gray400),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: duelProvider.pendingInvitations.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final invitation = duelProvider.pendingInvitations[index];
+        return _DuelInvitationCard(invitation: invitation);
+      },
+    );
+  }
+}
+
+// ══════════════════════════════════════════════
+// CARTE : Invitation de Duel (Accepter / Refuser)
+// ══════════════════════════════════════════════
+class _DuelInvitationCard extends StatelessWidget {
+  final DuelInvitation invitation;
+
+  const _DuelInvitationCard({required this.invitation});
+
+  Color _difficultyColor(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'facile':    return AppColors.green;
+      case 'moyen':     return AppColors.blue;
+      case 'difficile': return AppColors.orange;
+      case 'extreme':
+      case 'extrême':   return AppColors.red;
+      default:          return AppColors.gray500;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _difficultyColor(invitation.difficulty);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.orange.withOpacity(0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.orange.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header : avatar + nom + badge difficulté
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.purple, Color(0xFF7C3AED)],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(Icons.person, color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      invitation.fromUsername,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.sports_kabaddi,
+                            size: 13, color: AppColors.orange),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Vous invite à un duel !',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // Badge difficulté
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  invitation.difficulty.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+          Text(
+            _timeAgo(invitation.createdAt),
+            style: TextStyle(fontSize: 12, color: AppColors.gray500),
+          ),
+          const SizedBox(height: 12),
+
+          // Boutons
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final dp = Provider.of<DuelProvider>(context, listen: false);
+                    final success =
+                        await dp.acceptDuelInvitation(invitation.id);
+                    if (context.mounted) {
+                      if (success) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => DuelGameScreen()),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: const Text('Erreur lors de l\'acceptation'),
+                          backgroundColor: AppColors.red,
+                        ));
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Accepter'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final dp = Provider.of<DuelProvider>(context, listen: false);
+                    await dp.declineDuelInvitation(invitation.id);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Invitation refusée')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Refuser'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.red,
+                    side: BorderSide(color: AppColors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inDays > 0) return 'Il y a ${diff.inDays}j';
+    if (diff.inHours > 0) return 'Il y a ${diff.inHours}h';
+    if (diff.inMinutes > 0) return 'Il y a ${diff.inMinutes}min';
+    return 'À l\'instant';
+  }
+}
+
+// ══════════════════════════════════════════════
+// CARTE : Ami
+// ══════════════════════════════════════════════
 class _FriendCard extends StatelessWidget {
   final FriendModel friend;
-  
+
   const _FriendCard({required this.friend});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => FriendProfileScreen(friendId: friend.id),
-          ),
-        );
-      },
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => FriendProfileScreen(friendId: friend.id),
+        ),
+      ),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -270,7 +527,7 @@ class _FriendCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Avatar
+            // Avatar + indicateur online
             Stack(
               children: [
                 Container(
@@ -282,11 +539,7 @@ class _FriendCard extends StatelessWidget {
                     ),
                     borderRadius: BorderRadius.circular(28),
                   ),
-                  child: const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 32,
-                  ),
+                  child: const Icon(Icons.person, color: Colors.white, size: 32),
                 ),
                 if (friend.isOnline)
                   Positioned(
@@ -304,10 +557,10 @@ class _FriendCard extends StatelessWidget {
                   ),
               ],
             ),
-            
+
             const SizedBox(width: 16),
-            
-            // User info
+
+            // Infos
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,7 +579,8 @@ class _FriendCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppColors.blue.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
@@ -345,31 +599,42 @@ class _FriendCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(
-                        Icons.military_tech,
-                        size: 14,
-                        color: _getLeagueColor(friend.league),
-                      ),
+                      Icon(Icons.military_tech,
+                          size: 14, color: _leagueColor(friend.league)),
                       const SizedBox(width: 4),
-                      Text(
-                        friend.league,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.gray600,
+                      Text(friend.league,
+                          style: TextStyle(
+                              fontSize: 13, color: AppColors.gray600)),
+                      const SizedBox(width: 12),
+                      Icon(Icons.stars, size: 14, color: AppColors.yellow),
+                      const SizedBox(width: 4),
+                      Text('${friend.xp} XP',
+                          style: TextStyle(
+                              fontSize: 13, color: AppColors.gray600)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // ✅ Statut en ligne / hors ligne visible
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: friend.isOnline
+                              ? AppColors.green
+                              : AppColors.gray400,
+                          shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Icon(
-                        Icons.stars,
-                        size: 14,
-                        color: AppColors.yellow,
-                      ),
                       const SizedBox(width: 4),
                       Text(
-                        '${friend.xp} XP',
+                        friend.isOnline ? 'En ligne' : 'Hors ligne',
                         style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.gray600,
+                          fontSize: 11,
+                          color: friend.isOnline
+                              ? AppColors.green
+                              : AppColors.gray400,
                         ),
                       ),
                     ],
@@ -377,53 +642,59 @@ class _FriendCard extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // Actions
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Chat Button
                 IconButton(
                   icon: Icon(Icons.message, color: AppColors.blue),
-                  onPressed: () async {
-                    _openChat(context, friend);
-                  },
+                  onPressed: () => _openChat(context, friend),
                   tooltip: 'Envoyer un message',
                 ),
-                // More Options
                 PopupMenuButton<String>(
                   icon: Icon(Icons.more_vert, color: AppColors.gray500),
-                  onSelected: (value) async {
+                  onSelected: (value) {
                     if (value == 'remove') {
-                      _showRemoveFriendDialog(context, friend);
+                      _showRemoveDialog(context, friend);
                     } else if (value == 'profile') {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => FriendProfileScreen(friendId: friend.id),
-                        ),
-                      );
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            FriendProfileScreen(friendId: friend.id),
+                      ));
+                    } else if (value == 'invite') {
+                      _showInviteDialog(context, friend);
                     }
                   },
                   itemBuilder: (context) => [
                     const PopupMenuItem(
                       value: 'profile',
+                      child: Row(children: [
+                        Icon(Icons.person, size: 20),
+                        SizedBox(width: 12),
+                        Text('Voir le profil'),
+                      ]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'invite',
                       child: Row(
                         children: [
-                          Icon(Icons.person, size: 20),
+                          Icon(Icons.sports_kabaddi,
+                              size: 20, color: AppColors.red),
                           SizedBox(width: 12),
-                          Text('Voir le profil'),
+                          Text('Inviter à jouer'),
                         ],
                       ),
                     ),
                     const PopupMenuItem(
                       value: 'remove',
-                      child: Row(
-                        children: [
-                          Icon(Icons.person_remove, size: 20, color: AppColors.red),
-                          SizedBox(width: 12),
-                          Text('Retirer', style: TextStyle(color: AppColors.red)),
-                        ],
-                      ),
+                      child: Row(children: [
+                        Icon(Icons.person_remove,
+                            size: 20, color: AppColors.red),
+                        SizedBox(width: 12),
+                        Text('Retirer',
+                            style: TextStyle(color: AppColors.red)),
+                      ]),
                     ),
                   ],
                 ),
@@ -434,13 +705,184 @@ class _FriendCard extends StatelessWidget {
       ),
     );
   }
-  
-  void _showRemoveFriendDialog(BuildContext context, FriendModel friend) {
+
+  // ✅ Dialog difficulté — 1 seul showDialog
+  void _showInviteDialog(BuildContext context, FriendModel friend) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.sports_kabaddi, color: AppColors.red),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Inviter ${friend.username}',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              // Indicateur "En ligne"
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                        color: AppColors.green, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('En ligne',
+                      style:
+                          TextStyle(fontSize: 12, color: AppColors.green)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const Text('Choisissez la difficulté :'),
+              const SizedBox(height: 16),
+              Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DifficultyButton(
+                          label: 'Facile',
+                          color: AppColors.green,
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _inviteToDuel(context, friend, 'facile');
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DifficultyButton(
+                          label: 'Moyen',
+                          color: AppColors.blue,
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _inviteToDuel(context, friend, 'moyen');
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DifficultyButton(
+                          label: 'Difficile',
+                          color: AppColors.orange,
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _inviteToDuel(context, friend, 'difficile');
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DifficultyButton(
+                          label: 'Extrême',
+                          color: AppColors.red,
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _inviteToDuel(context, friend, 'extreme');
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.center,
+                child: TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Annuler'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _inviteToDuel(
+      BuildContext context, FriendModel friend, String difficulty) async {
+    // Afficher loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Center(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(12)),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Envoi de l\'invitation...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final duelProvider =
+          Provider.of<DuelProvider>(context, listen: false);
+      await duelProvider.challengeFriend(friend.id, difficulty);
+
+      if (context.mounted) {
+        Navigator.of(context).pop(); // fermer loading
+
+        // ✅ Invitation envoyée — on reste sur l'écran amis
+        // L'ami reçoit une notification, quand il accepte
+        // une entrée apparaît dans l'onglet Duels de l'inviteur
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ Invitation envoyée à ${friend.username} ! En attente de sa réponse.',
+            ),
+            backgroundColor: AppColors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // fermer loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur: ${e.toString()}'),
+          backgroundColor: AppColors.red,
+        ));
+      }
+    }
+  }
+
+  void _showRemoveDialog(BuildContext context, FriendModel friend) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Retirer cet ami ?'),
-        content: Text('Êtes-vous sûr de vouloir retirer ${friend.username} de vos amis ?'),
+        content: Text(
+            'Êtes-vous sûr de vouloir retirer ${friend.username} de vos amis ?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -449,21 +891,16 @@ class _FriendCard extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.of(context).pop();
-              
-              final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
-              final success = await friendsProvider.removeFriend(friend.id);
-              
+              final fp =
+                  Provider.of<FriendsProvider>(context, listen: false);
+              final success = await fp.removeFriend(friend.id);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success 
-                        ? 'Ami retiré avec succès' 
-                        : 'Erreur lors de la suppression',
-                    ),
-                    backgroundColor: success ? AppColors.green : AppColors.red,
-                  ),
-                );
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(success
+                      ? 'Ami retiré avec succès'
+                      : 'Erreur lors de la suppression'),
+                  backgroundColor: success ? AppColors.green : AppColors.red,
+                ));
               }
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.red),
@@ -473,78 +910,113 @@ class _FriendCard extends StatelessWidget {
       ),
     );
   }
-  
-  Color _getLeagueColor(String league) {
-    if (league.contains('Bronze')) return const Color(0xFFCD7F32);
-    if (league.contains('Silver')) return const Color(0xFFC0C0C0);
-    if (league.contains('Gold')) return const Color(0xFFFFD700);
+
+  Color _leagueColor(String league) {
+    if (league.contains('Bronze'))   return const Color(0xFFCD7F32);
+    if (league.contains('Silver'))   return const Color(0xFFC0C0C0);
+    if (league.contains('Gold'))     return const Color(0xFFFFD700);
     if (league.contains('Platinum')) return const Color(0xFFE5E4E2);
-    if (league.contains('Diamond')) return const Color(0xFFB9F2FF);
-    if (league.contains('Master')) return const Color(0xFF9B59B6);
+    if (league.contains('Diamond'))  return const Color(0xFFB9F2FF);
+    if (league.contains('Master'))   return const Color(0xFF9B59B6);
     return AppColors.gray500;
   }
 
   Future<void> _openChat(BuildContext context, FriendModel friend) async {
-    // Show loading indicator
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ouverture de la conversation...'),
-          duration: Duration(seconds: 1),
-        ),
-      );
-    }
-    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Ouverture de la conversation...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
     try {
-      // Get or create conversation
-      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-      
-      // First, make sure we have all conversations loaded
+      final chatProvider =
+          Provider.of<ChatProvider>(context, listen: false);
       await chatProvider.loadConversations();
-      
-      final conversationId = await chatProvider.getOrCreateConversation(friend.id);
-      
-      print('DEBUG: Conversation ID: $conversationId for friend ${friend.id} (${friend.username})');
-      
+      final conversationId =
+          await chatProvider.getOrCreateConversation(friend.id);
+
       if (conversationId != null && conversationId > 0 && context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ChatScreen(
-              conversationId: conversationId,
-              friendId: friend.id,
-              friendUsername: friend.username,
-            ),
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            conversationId: conversationId,
+            friendId: friend.id,
+            friendUsername: friend.username,
           ),
-        );
+        ));
       } else if (context.mounted) {
-        print('ERROR: conversationId is null or invalid: $conversationId');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Impossible d\'ouvrir la conversation avec ${friend.username}'),
-            backgroundColor: AppColors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Impossible d\'ouvrir la conversation avec ${friend.username}'),
+          backgroundColor: AppColors.red,
+          duration: const Duration(seconds: 3),
+        ));
       }
     } catch (e) {
-      print('ERROR opening chat: $e');
-      print('Stack trace: ${StackTrace.current}');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
-            backgroundColor: AppColors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur: ${e.toString()}'),
+          backgroundColor: AppColors.red,
+          duration: const Duration(seconds: 3),
+        ));
       }
     }
   }
 }
 
+// ══════════════════════════════════════════════
+// WIDGET : Bouton de difficulté
+// ══════════════════════════════════════════════
+class _DifficultyButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _DifficultyButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 72,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════
+// CARTE : Demande d'amitié reçue
+// ══════════════════════════════════════════════
 class _PendingRequestCard extends StatelessWidget {
   final FriendRequest request;
-  
+
   const _PendingRequestCard({required this.request});
 
   @override
@@ -568,7 +1040,6 @@ class _PendingRequestCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              // Avatar
               Container(
                 width: 48,
                 height: 48,
@@ -578,16 +1049,9 @@ class _PendingRequestCard extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: const Icon(
-                  Icons.person,
-                  color: Colors.white,
-                  size: 28,
-                ),
+                child: const Icon(Icons.person, color: Colors.white, size: 28),
               ),
-              
               const SizedBox(width: 12),
-              
-              // User info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -595,15 +1059,14 @@ class _PendingRequestCard extends StatelessWidget {
                     Text(
                       request.username,
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                          fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 2),
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppColors.blue.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
@@ -618,19 +1081,12 @@ class _PendingRequestCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Icon(
-                          Icons.military_tech,
-                          size: 12,
-                          color: AppColors.gray500,
-                        ),
+                        Icon(Icons.military_tech,
+                            size: 12, color: AppColors.gray500),
                         const SizedBox(width: 2),
-                        Text(
-                          request.league,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.gray600,
-                          ),
-                        ),
+                        Text(request.league,
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.gray600)),
                       ],
                     ),
                   ],
@@ -638,40 +1094,29 @@ class _PendingRequestCard extends StatelessWidget {
               ),
             ],
           ),
-          
-          const SizedBox(height: 12),
-          
-          // Time info
+          const SizedBox(height: 8),
           Text(
-            _getTimeAgo(request.createdAt),
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.gray500,
-            ),
+            _timeAgo(request.createdAt),
+            style: TextStyle(fontSize: 12, color: AppColors.gray500),
           ),
-          
           const SizedBox(height: 12),
-          
-          // Action buttons
           Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
-                    final success = await friendsProvider.acceptFriendRequest(request.friendshipId);
-                    
+                    final fp =
+                        Provider.of<FriendsProvider>(context, listen: false);
+                    final success =
+                        await fp.acceptFriendRequest(request.friendshipId);
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            success 
-                              ? 'Demande acceptée !' 
-                              : 'Erreur lors de l\'acceptation',
-                          ),
-                          backgroundColor: success ? AppColors.green : AppColors.red,
-                        ),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(success
+                            ? 'Demande acceptée !'
+                            : 'Erreur lors de l\'acceptation'),
+                        backgroundColor:
+                            success ? AppColors.green : AppColors.red,
+                      ));
                     }
                   },
                   icon: const Icon(Icons.check, size: 18),
@@ -687,20 +1132,18 @@ class _PendingRequestCard extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
-                    final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
-                    final success = await friendsProvider.rejectFriendRequest(request.friendshipId);
-                    
+                    final fp =
+                        Provider.of<FriendsProvider>(context, listen: false);
+                    final success =
+                        await fp.rejectFriendRequest(request.friendshipId);
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            success 
-                              ? 'Demande refusée' 
-                              : 'Erreur lors du refus',
-                          ),
-                          backgroundColor: success ? AppColors.gray600 : AppColors.red,
-                        ),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(success
+                            ? 'Demande refusée'
+                            : 'Erreur lors du refus'),
+                        backgroundColor:
+                            success ? AppColors.gray600 : AppColors.red,
+                      ));
                     }
                   },
                   icon: const Icon(Icons.close, size: 18),
@@ -718,19 +1161,15 @@ class _PendingRequestCard extends StatelessWidget {
       ),
     );
   }
-  
-  String _getTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-    
-    if (difference.inDays > 0) {
-      return 'Il y a ${difference.inDays} jour${difference.inDays > 1 ? 's' : ''}';
-    } else if (difference.inHours > 0) {
-      return 'Il y a ${difference.inHours} heure${difference.inHours > 1 ? 's' : ''}';
-    } else if (difference.inMinutes > 0) {
-      return 'Il y a ${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''}';
-    } else {
-      return 'À l\'instant';
-    }
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inDays > 0)
+      return 'Il y a ${diff.inDays} jour${diff.inDays > 1 ? 's' : ''}';
+    if (diff.inHours > 0)
+      return 'Il y a ${diff.inHours} heure${diff.inHours > 1 ? 's' : ''}';
+    if (diff.inMinutes > 0)
+      return 'Il y a ${diff.inMinutes} minute${diff.inMinutes > 1 ? 's' : ''}';
+    return 'À l\'instant';
   }
 }

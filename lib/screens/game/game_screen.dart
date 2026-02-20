@@ -30,6 +30,13 @@ class _GameScreenState extends State<GameScreen> {
       }
       
       final gameProvider = Provider.of<GameProvider>(context, listen: false);
+      
+      // ✅ NOUVEAU: Vérifier Game Over
+      if (gameProvider.isGameOver) {
+        timer.cancel();
+        _showGameOverDialog();
+      }
+      
       if (gameProvider.isCompleted) {
         timer.cancel();
         _showVictoryDialog();
@@ -59,7 +66,7 @@ class _GameScreenState extends State<GameScreen> {
             },
           ),
           actions: [
-            // Bouton Nouvelle Partie - NOUVEAU
+            // Bouton Nouvelle Partie
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => _showNewGameDialog(context),
@@ -102,10 +109,12 @@ class _GameScreenState extends State<GameScreen> {
                           label: 'Temps',
                           value: gameProvider.formattedTime,
                         ),
+                        // ✅ AMÉLIORÉ: Afficher les erreurs avec couleur
                         _GameStat(
                           icon: Icons.close,
                           label: 'Erreurs',
-                          value: '${gameProvider.mistakes}',
+                          value: '${gameProvider.mistakes}/3',
+                          isError: gameProvider.mistakes >= 2,
                         ),
                         _GameStat(
                           icon: Icons.lightbulb_outline,
@@ -194,7 +203,7 @@ class _GameScreenState extends State<GameScreen> {
               // Number Pad
               NumberPad(
                 isNoteMode: gameProvider.isNoteMode,
-                grid: gameProvider.playerGrid, // NOUVEAU : passer la grille
+                grid: gameProvider.playerGrid,
                 onNumberTap: (number) {
                   if (selectedRow != null && selectedCol != null) {
                     if (number == 0) {
@@ -212,7 +221,118 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
   
-  // NOUVEAU - Dialogue pour commencer une nouvelle partie
+  // ✅ NOUVEAU: Dialogue Game Over
+  void _showGameOverDialog() {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.red, size: 32),
+            SizedBox(width: 12),
+            Text('Game Over !'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.sentiment_very_dissatisfied, size: 80, color: AppColors.red),
+            SizedBox(height: 16),
+            Text(
+              '3 erreurs atteintes !',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.red,
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Vous avez fait trop d\'erreurs.\nVoulez-vous continuer ?',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14),
+            ),
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.gray50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.gray200),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Temps:', style: TextStyle(color: AppColors.gray500)),
+                      Text(
+                        gameProvider.formattedTime,
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Erreurs:', style: TextStyle(color: AppColors.gray500)),
+                      Text(
+                        '${gameProvider.mistakes}',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.red),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          // ✅ Option 1: Quitter
+          TextButton(
+            onPressed: () async {
+              await gameProvider.abandonGame();
+              
+              if (context.mounted) {
+                Navigator.of(context).pop(); // Close dialog
+                Navigator.of(context).pop(); // Close game screen
+              }
+            },
+            child: Text('Quitter'),
+          ),
+          
+          // ✅ Option 2: Continuer avec pub (pour plus tard)
+          ElevatedButton.icon(
+            onPressed: () {
+              // Pour l'instant, continuer directement
+              // Plus tard: Afficher une pub avant
+              gameProvider.continueWithAd();
+              Navigator.of(context).pop();
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('📺 Publicité regardée - Vous avez une nouvelle chance !'),
+                  backgroundColor: AppColors.green,
+                ),
+              );
+            },
+            icon: Icon(Icons.play_arrow, size: 18),
+            label: Text('Continuer'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Dialogue pour commencer une nouvelle partie
   Future<void> _showNewGameDialog(BuildContext context) {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     
@@ -302,15 +422,11 @@ class _GameScreenState extends State<GameScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              // Abandon current game
               await gameProvider.abandonGame();
               
               if (context.mounted) {
-                // Close dialog
                 Navigator.of(context).pop();
-                // Close game screen
                 Navigator.of(context).pop();
-                // Open mode selection
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => ClassicModeScreen()),
                 );
@@ -463,8 +579,8 @@ class _GameScreenState extends State<GameScreen> {
               await gameProvider.abandonGame();
               
               if (context.mounted) {
-                Navigator.of(context).pop(); // Close victory dialog
-                Navigator.of(context).pop(); // Close game screen
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => ClassicModeScreen()),
                 );
@@ -486,24 +602,31 @@ class _GameStat extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final bool isError; // ✅ NOUVEAU
   
   const _GameStat({
     required this.icon,
     required this.label,
     required this.value,
+    this.isError = false,
   });
   
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, color: AppColors.blue, size: 24),
+        Icon(
+          icon,
+          color: isError ? AppColors.red : AppColors.blue, // ✅ Rouge si erreurs
+          size: 24,
+        ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
+            color: isError ? AppColors.red : null, // ✅ Rouge si erreurs
           ),
         ),
         Text(

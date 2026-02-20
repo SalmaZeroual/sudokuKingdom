@@ -7,10 +7,10 @@ import '../services/api_service.dart';
 class GameProvider with ChangeNotifier {
   GameModel? _currentGame;
   List<List<int>> _playerGrid = [];
-  List<List<int>> _solutionGrid = []; // NOUVEAU : Pour le mode Story
+  List<List<int>> _solutionGrid = [];
   List<List<bool>> _initialCells = [];
   List<List<bool>> _errorCells = [];
-  List<List<Set<int>>> _notes = []; // Notes pour chaque case
+  List<List<Set<int>>> _notes = [];
   
   Timer? _timer;
   Timer? _autoSaveTimer;
@@ -18,8 +18,11 @@ class GameProvider with ChangeNotifier {
   int _mistakes = 0;
   bool _isCompleted = false;
   bool _isLoading = false;
-  bool _isNoteMode = false; // Mode notes activé/désactivé
-  bool _isPaused = false; // NOUVEAU : Pour gérer la pause
+  bool _isNoteMode = false;
+  bool _isPaused = false;
+  
+  // ✅ NOUVEAU: Game Over state
+  bool _isGameOver = false;
   
   List<BoosterModel> _boosters = [];
   String? _selectedBooster;
@@ -36,24 +39,21 @@ class GameProvider with ChangeNotifier {
   int get mistakes => _mistakes;
   bool get isLoading => _isLoading;
   bool get isNoteMode => _isNoteMode;
+  bool get isGameOver => _isGameOver; // ✅ NOUVEAU
   List<BoosterModel> get boosters => _boosters;
   String? get selectedBooster => _selectedBooster;
   
-  // MODIFIÉ : Getter isCompleted avec support du mode Story
   bool get isCompleted {
-    // Check if all cells are filled and correct
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 9; j++) {
         if (_playerGrid[i][j] == 0) return false;
         
-        // If we have a solution grid (story mode), check against it
         if (_solutionGrid.isNotEmpty) {
           if (_playerGrid[i][j] != _solutionGrid[i][j]) return false;
         }
       }
     }
     
-    // Additional validation for non-story mode
     if (_solutionGrid.isEmpty) {
       return _validateSudoku();
     }
@@ -72,44 +72,35 @@ class GameProvider with ChangeNotifier {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
   
-  // Toggle note mode
   void toggleNoteMode() {
     _isNoteMode = !_isNoteMode;
     notifyListeners();
   }
   
-  // NOUVEAU : Initialize game for Story Mode
-  void initializeStoryGame(
-    List<List<int>> grid,
-    List<List<int>> solution,
-  ) {
-    _currentGame = null; // Story mode doesn't use game model
-    _playerGrid = grid.map((row) => List<int>.from(row)).toList();
-    _solutionGrid = solution.map((row) => List<int>.from(row)).toList();
+  // Initialize game for Story Mode
+  void initializeStoryGame(List<List<int>> grid, List<List<int>> solution) {
+    print('🎮 Initializing story game...');
+    print('Grid: ${grid.length}x${grid.isNotEmpty ? grid[0].length : 0}');
     
-    // Mark initial cells
-    _initialCells = List.generate(
-      9,
-      (i) => List.generate(9, (j) => grid[i][j] != 0),
-    );
+    _currentGame = null;
     
-    // Reset error cells
+    _playerGrid = List.generate(9, (i) => List<int>.from(grid[i]));
+    _solutionGrid = List.generate(9, (i) => List<int>.from(solution[i]));
+    
+    _initialCells = List.generate(9, (i) => List.generate(9, (j) => grid[i][j] != 0));
     _errorCells = List.generate(9, (_) => List.generate(9, (_) => false));
-    
-    // Reset notes
     _notes = List.generate(9, (_) => List.generate(9, (_) => <int>{}));
     
-    // Reset game state
     _mistakes = 0;
     _isNoteMode = false;
     _isPaused = false;
+    _isGameOver = false; // ✅ NOUVEAU
     
+    print('✅ Story game initialized! Grid: ${_playerGrid[0]}');
     notifyListeners();
   }
   
-  // NOUVEAU : Validate Sudoku helper method
   bool _validateSudoku() {
-    // Validate rows
     for (int i = 0; i < 9; i++) {
       final seen = <int>{};
       for (int j = 0; j < 9; j++) {
@@ -120,7 +111,6 @@ class GameProvider with ChangeNotifier {
       }
     }
     
-    // Validate columns
     for (int j = 0; j < 9; j++) {
       final seen = <int>{};
       for (int i = 0; i < 9; i++) {
@@ -131,7 +121,6 @@ class GameProvider with ChangeNotifier {
       }
     }
     
-    // Validate 3x3 boxes
     for (int box = 0; box < 9; box++) {
       final seen = <int>{};
       final startRow = (box ~/ 3) * 3;
@@ -150,7 +139,6 @@ class GameProvider with ChangeNotifier {
     return true;
   }
   
-  // Check for active game on startup
   Future<bool> checkForActiveGame() async {
     try {
       _isLoading = true;
@@ -167,6 +155,7 @@ class GameProvider with ChangeNotifier {
         _elapsedSeconds = _currentGame!.timeElapsed;
         _mistakes = _currentGame!.mistakes;
         _isCompleted = false;
+        _isGameOver = false; // ✅ NOUVEAU
         
         await loadBoosters();
         
@@ -206,6 +195,7 @@ class GameProvider with ChangeNotifier {
       _mistakes = 0;
       _isCompleted = false;
       _isNoteMode = false;
+      _isGameOver = false; // ✅ NOUVEAU
       
       _startTimer();
       _startAutoSave();
@@ -246,7 +236,7 @@ class GameProvider with ChangeNotifier {
   }
   
   Future<void> _saveProgress() async {
-    if (_currentGame == null || _isCompleted) return;
+    if (_currentGame == null || _isCompleted || _isGameOver) return;
     
     try {
       await _apiService.post('/game/${_currentGame!.id}/save', {
@@ -268,40 +258,39 @@ class GameProvider with ChangeNotifier {
   }
   
   void resumeGame() {
-    if (_currentGame != null && !_isCompleted) {
+    if (_currentGame != null && !_isCompleted && !_isGameOver) {
       _startTimer();
       _startAutoSave();
       notifyListeners();
     }
   }
   
-  // Set cell value or note
   Future<void> setCellValue(int row, int col, int value) async {
-    if (_initialCells[row][col] || _isCompleted) return;
+    if (_initialCells[row][col] || _isCompleted || _isGameOver) return; // ✅ Bloquer si game over
     
     if (_isNoteMode) {
-      // Mode notes : ajouter/retirer une note
       if (_notes[row][col].contains(value)) {
         _notes[row][col].remove(value);
       } else {
         _notes[row][col].add(value);
       }
     } else {
-      // Mode normal : remplir la case
       _playerGrid[row][col] = value;
-      
-      // Effacer les notes de cette case
       _notes[row][col].clear();
       
-      // MODIFIÉ : Check contre solution (Story mode) ou currentGame
       int correctValue = _solutionGrid.isNotEmpty 
           ? _solutionGrid[row][col] 
           : _currentGame!.solution[row][col];
       
-      // Check if correct
       if (value != 0 && value != correctValue) {
         _errorCells[row][col] = true;
         _mistakes++;
+        
+        // ✅ NOUVEAU: Vérifier si 3 erreurs atteintes
+        if (_mistakes >= 3) {
+          _triggerGameOver();
+          return; // Arrêter l'exécution
+        }
         
         Future.delayed(const Duration(seconds: 1), () {
           if (_errorCells.length > row && _errorCells[row].length > col) {
@@ -315,7 +304,6 @@ class GameProvider with ChangeNotifier {
         }
       }
       
-      // Check if completed
       if (_checkCompletion()) {
         await _completeGame();
       }
@@ -324,9 +312,32 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
   
-  // Clear cell
+  // ✅ NOUVEAU: Fonction Game Over
+  void _triggerGameOver() {
+    _isGameOver = true;
+    _timer?.cancel();
+    _autoSaveTimer?.cancel();
+    
+    print('💀 GAME OVER! 3 erreurs atteintes.');
+    
+    notifyListeners();
+  }
+  
+  // ✅ NOUVEAU: Continuer avec publicité (pour plus tard)
+  void continueWithAd() {
+    _isGameOver = false;
+    _mistakes = 2; // Réinitialiser à 2 erreurs (1 chance restante)
+    
+    _startTimer();
+    _startAutoSave();
+    
+    print('📺 Pub regardée - Jeu repris avec 2 erreurs');
+    
+    notifyListeners();
+  }
+  
   void clearCell(int row, int col) {
-    if (_initialCells[row][col] || _isCompleted) return;
+    if (_initialCells[row][col] || _isCompleted || _isGameOver) return; // ✅ Bloquer si game over
     
     _playerGrid[row][col] = 0;
     _notes[row][col].clear();
@@ -340,7 +351,6 @@ class GameProvider with ChangeNotifier {
       for (int j = 0; j < 9; j++) {
         if (_playerGrid[i][j] == 0) return false;
         
-        // Check contre solution (Story mode) ou currentGame
         int correctValue = _solutionGrid.isNotEmpty 
             ? _solutionGrid[i][j] 
             : _currentGame!.solution[i][j];
@@ -358,7 +368,6 @@ class GameProvider with ChangeNotifier {
     _timer?.cancel();
     _autoSaveTimer?.cancel();
     
-    // Only call API if we have a current game (not Story mode)
     if (_currentGame != null) {
       try {
         await _apiService.post('/game/${_currentGame!.id}/complete', {
@@ -389,7 +398,6 @@ class GameProvider with ChangeNotifier {
     switch (boosterType) {
       case 'reveal_cell':
         if (row != null && col != null && !_initialCells[row][col]) {
-          // MODIFIÉ : Support pour Story mode
           int correctValue = _solutionGrid.isNotEmpty 
               ? _solutionGrid[row][col] 
               : _currentGame!.solution[row][col];
@@ -413,7 +421,6 @@ class GameProvider with ChangeNotifier {
         for (int i = 0; i < 9; i++) {
           for (int j = 0; j < 9; j++) {
             if (!_initialCells[i][j] && _playerGrid[i][j] != 0) {
-              // MODIFIÉ : Support pour Story mode
               int correctValue = _solutionGrid.isNotEmpty 
                   ? _solutionGrid[i][j] 
                   : _currentGame!.solution[i][j];
@@ -474,7 +481,7 @@ class GameProvider with ChangeNotifier {
     
     _currentGame = null;
     _playerGrid = [];
-    _solutionGrid = []; // AJOUTÉ : Reset solution grid
+    _solutionGrid = [];
     _initialCells = [];
     _errorCells = [];
     _notes = [];
@@ -482,7 +489,8 @@ class GameProvider with ChangeNotifier {
     _mistakes = 0;
     _isCompleted = false;
     _isNoteMode = false;
-    _isPaused = false; // AJOUTÉ
+    _isPaused = false;
+    _isGameOver = false; // ✅ NOUVEAU
     _selectedBooster = null;
     _boosters = [];
     
