@@ -7,7 +7,9 @@ class FriendModel {
   final String league;
   final String? friendshipStatus;
   final DateTime? friendsSince;
-  
+  // ✅ isOnline est maintenant un vrai champ venant du backend
+  final bool isOnline;
+
   FriendModel({
     required this.id,
     required this.username,
@@ -17,8 +19,9 @@ class FriendModel {
     required this.league,
     this.friendshipStatus,
     this.friendsSince,
+    this.isOnline = false,
   });
-  
+
   factory FriendModel.fromJson(Map<String, dynamic> json) {
     return FriendModel(
       id: json['id'],
@@ -28,14 +31,14 @@ class FriendModel {
       xp: json['xp'] ?? 0,
       league: json['league'] ?? 'Bronze I',
       friendshipStatus: json['friendship_status'],
-      friendsSince: json['created_at'] != null 
-          ? DateTime.parse(json['created_at']) 
+      friendsSince: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : null,
+      // ✅ Le backend doit renvoyer is_online: true/false
+      isOnline: json['is_online'] == true || json['is_online'] == 1,
     );
   }
-  
-  bool get isOnline => false; // TODO: Implement online status
-  
+
   String get statusText {
     if (friendshipStatus == null) return 'Pas ami';
     if (friendshipStatus == 'pending') return 'En attente';
@@ -53,7 +56,7 @@ class FriendRequest {
   final int xp;
   final String league;
   final DateTime createdAt;
-  
+
   FriendRequest({
     required this.friendshipId,
     required this.userId,
@@ -64,7 +67,7 @@ class FriendRequest {
     required this.league,
     required this.createdAt,
   });
-  
+
   factory FriendRequest.fromJson(Map<String, dynamic> json) {
     return FriendRequest(
       friendshipId: json['friendship_id'],

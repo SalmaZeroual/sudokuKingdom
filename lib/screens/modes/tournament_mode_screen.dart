@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../config/theme.dart';
-import '../../config/constants.dart';
 import '../../models/tournament_model.dart';
 import '../tournament/tournament_game_screen.dart';
-import '../tournament/tournament_leaderboard_screen.dart';
 
 class TournamentModeScreen extends StatefulWidget {
   const TournamentModeScreen({Key? key}) : super(key: key);

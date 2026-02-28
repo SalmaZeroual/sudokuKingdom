@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../config/theme.dart';
+import '../widgets/avatar_widget.dart'; // ✅ AJOUTÉ
+import 'avatar_selection_screen.dart'; // ✅ AJOUTÉ
 import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -22,7 +24,6 @@ class ProfileScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
-            
             },
           ),
           IconButton(
@@ -59,15 +60,20 @@ class ProfileScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // Avatar
-            CircleAvatar(
-              radius: 60,
-              backgroundColor: AppColors.blue,
-              child: const Icon(
-                Icons.person,
-                size: 60,
-                color: Colors.white,
-              ),
+            // ✅ MODIFIÉ : Avatar avec bouton d'édition (style Kahoot)
+            AvatarWidget(
+              avatarId: user?.avatar,
+              size: 120,
+              showEditButton: true,
+              showBorder: true,
+              borderWidth: 4,
+              onEditTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AvatarSelectionScreen(canSkip: false),
+                  ),
+                );
+              },
             ),
             
             const SizedBox(height: 16),

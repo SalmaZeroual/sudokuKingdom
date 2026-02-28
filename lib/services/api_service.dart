@@ -59,13 +59,15 @@ class ApiService {
       throw Exception('Erreur de connexion: $e');
     }
   }
-  
-  Future<dynamic> delete(String endpoint) async {
+
+  // ✅ body est maintenant optionnel : delete simple ou delete avec mot de passe
+  Future<dynamic> delete(String endpoint, {Map<String, dynamic>? body}) async {
     try {
       final headers = await _getHeaders();
       final response = await http.delete(
         Uri.parse('$baseUrl$endpoint'),
         headers: headers,
+        body: body != null ? jsonEncode(body) : null,
       );
       
       return _handleResponse(response);
@@ -79,7 +81,6 @@ class ApiService {
       if (response.body.isEmpty) return {};
       return jsonDecode(response.body);
     } else {
-      // Parse error message
       try {
         final error = jsonDecode(response.body);
         throw Exception(error['error'] ?? 'Erreur serveur');

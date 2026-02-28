@@ -5,6 +5,7 @@ import '../../providers/chat_provider.dart';
 import '../../providers/duel_provider.dart';
 import '../../config/theme.dart';
 import '../../models/friend_model.dart';
+import '../../widgets/avatar_widget.dart';
 import 'friend_profile_screen.dart';
 import 'add_friend_screen.dart';
 import '../chat/chat_screen.dart';
@@ -24,15 +25,14 @@ class _FriendsScreenState extends State<FriendsScreen>
   @override
   void initState() {
     super.initState();
-    // ✅ 3 onglets : Amis | Demandes | Invitations Duel
     _tabController = TabController(length: 3, vsync: this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
+      final friendsProvider =
+          Provider.of<FriendsProvider>(context, listen: false);
       friendsProvider.loadFriends();
       friendsProvider.loadPendingRequests();
 
-      // ✅ Charger les invitations de duel en attente
       final duelProvider = Provider.of<DuelProvider>(context, listen: false);
       duelProvider.loadPendingDuelInvitations();
     });
@@ -52,7 +52,6 @@ class _FriendsScreenState extends State<FriendsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Amis'),
-        // ✅ FIX ligne jaune/noire : couleur explicite pour éviter le debug banner
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
         elevation: 0,
@@ -63,7 +62,8 @@ class _FriendsScreenState extends State<FriendsScreen>
               padding: const EdgeInsets.only(right: 8),
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.red,
                     borderRadius: BorderRadius.circular(12),
@@ -88,7 +88,6 @@ class _FriendsScreenState extends State<FriendsScreen>
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
-          // ✅ Container blanc pour éviter la ligne jaune/noire du TabBar
           child: Container(
             color: Theme.of(context).scaffoldBackgroundColor,
             child: TabBar(
@@ -97,7 +96,6 @@ class _FriendsScreenState extends State<FriendsScreen>
               labelColor: AppColors.blue,
               unselectedLabelColor: AppColors.gray500,
               tabs: [
-                // Onglet 1 — Amis
                 Tab(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -108,7 +106,6 @@ class _FriendsScreenState extends State<FriendsScreen>
                     ],
                   ),
                 ),
-                // Onglet 2 — Demandes d'amitié
                 Tab(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -123,7 +120,6 @@ class _FriendsScreenState extends State<FriendsScreen>
                     ],
                   ),
                 ),
-                // Onglet 3 — Invitations Duel reçues
                 Tab(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -155,7 +151,6 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 }
 
-/// Petit point de notification réutilisable
 class _BadgeDot extends StatelessWidget {
   final Color color;
   const _BadgeDot({required this.color});
@@ -212,7 +207,8 @@ class _FriendsListTab extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.blue,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ],
@@ -321,7 +317,7 @@ class _DuelInvitationsTab extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════
-// CARTE : Invitation de Duel (Accepter / Refuser)
+// CARTE : Invitation de Duel — ✅ Avatar réel
 // ══════════════════════════════════════════════
 class _DuelInvitationCard extends StatelessWidget {
   final DuelInvitation invitation;
@@ -330,12 +326,17 @@ class _DuelInvitationCard extends StatelessWidget {
 
   Color _difficultyColor(String difficulty) {
     switch (difficulty.toLowerCase()) {
-      case 'facile':    return AppColors.green;
-      case 'moyen':     return AppColors.blue;
-      case 'difficile': return AppColors.orange;
+      case 'facile':
+        return AppColors.green;
+      case 'moyen':
+        return AppColors.blue;
+      case 'difficile':
+        return AppColors.orange;
       case 'extreme':
-      case 'extrême':   return AppColors.red;
-      default:          return AppColors.gray500;
+      case 'extrême':
+        return AppColors.red;
+      default:
+        return AppColors.gray500;
     }
   }
 
@@ -360,19 +361,13 @@ class _DuelInvitationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header : avatar + nom + badge difficulté
           Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.purple, Color(0xFF7C3AED)],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: const Icon(Icons.person, color: Colors.white, size: 28),
+              // ✅ Avatar réel avec avatarId depuis l'invitation
+              AvatarWidget(
+                avatarId: invitation.fromAvatarId,
+                size: 48,
+                showBorder: false,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -403,7 +398,8 @@ class _DuelInvitationCard extends StatelessWidget {
               ),
               // Badge difficulté
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: color,
                   borderRadius: BorderRadius.circular(8),
@@ -427,23 +423,25 @@ class _DuelInvitationCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Boutons
           Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    final dp = Provider.of<DuelProvider>(context, listen: false);
+                    final dp =
+                        Provider.of<DuelProvider>(context, listen: false);
                     final success =
                         await dp.acceptDuelInvitation(invitation.id);
                     if (context.mounted) {
                       if (success) {
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => DuelGameScreen()),
+                          MaterialPageRoute(
+                              builder: (_) => DuelGameScreen()),
                         );
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: const Text('Erreur lors de l\'acceptation'),
+                          content:
+                              const Text('Erreur lors de l\'acceptation'),
                           backgroundColor: AppColors.red,
                         ));
                       }
@@ -462,7 +460,8 @@ class _DuelInvitationCard extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
-                    final dp = Provider.of<DuelProvider>(context, listen: false);
+                    final dp =
+                        Provider.of<DuelProvider>(context, listen: false);
                     await dp.declineDuelInvitation(invitation.id);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -496,7 +495,7 @@ class _DuelInvitationCard extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════
-// CARTE : Ami
+// CARTE : Ami — ✅ Avatar réel + invite online only
 // ══════════════════════════════════════════════
 class _FriendCard extends StatelessWidget {
   final FriendModel friend;
@@ -527,30 +526,25 @@ class _FriendCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Avatar + indicateur online
+            // ✅ Avatar réel + indicateur online
             Stack(
+              clipBehavior: Clip.none,
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.purple, Color(0xFF7C3AED)],
-                    ),
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: const Icon(Icons.person, color: Colors.white, size: 32),
+                AvatarWidget(
+                  avatarId: friend.avatar,
+                  size: 56,
+                  showBorder: false,
                 ),
                 if (friend.isOnline)
                   Positioned(
-                    right: 0,
-                    bottom: 0,
+                    right: -2,
+                    bottom: -2,
                     child: Container(
                       width: 16,
                       height: 16,
                       decoration: BoxDecoration(
                         color: AppColors.green,
-                        borderRadius: BorderRadius.circular(8),
+                        shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                       ),
                     ),
@@ -614,7 +608,6 @@ class _FriendCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // ✅ Statut en ligne / hors ligne visible
                   Row(
                     children: [
                       Container(
@@ -663,7 +656,18 @@ class _FriendCard extends StatelessWidget {
                             FriendProfileScreen(friendId: friend.id),
                       ));
                     } else if (value == 'invite') {
-                      _showInviteDialog(context, friend);
+                      // ✅ Vérifier que l'ami est en ligne avant d'ouvrir le dialog
+                      if (friend.isOnline) {
+                        _showInviteDialog(context, friend);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                '${friend.username} est hors ligne, impossible d\'inviter.'),
+                            backgroundColor: AppColors.gray600,
+                          ),
+                        );
+                      }
                     }
                   },
                   itemBuilder: (context) => [
@@ -675,14 +679,29 @@ class _FriendCard extends StatelessWidget {
                         Text('Voir le profil'),
                       ]),
                     ),
-                    const PopupMenuItem(
+                    // ✅ "Inviter à jouer" grisé si hors ligne
+                    PopupMenuItem(
                       value: 'invite',
                       child: Row(
                         children: [
-                          Icon(Icons.sports_kabaddi,
-                              size: 20, color: AppColors.red),
-                          SizedBox(width: 12),
-                          Text('Inviter à jouer'),
+                          Icon(
+                            Icons.sports_kabaddi,
+                            size: 20,
+                            color: friend.isOnline
+                                ? AppColors.red
+                                : AppColors.gray400,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            friend.isOnline
+                                ? 'Inviter à jouer'
+                                : 'Inviter à jouer (hors ligne)',
+                            style: TextStyle(
+                              color: friend.isOnline
+                                  ? Colors.black
+                                  : AppColors.gray400,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -706,12 +725,12 @@ class _FriendCard extends StatelessWidget {
     );
   }
 
-  // ✅ Dialog difficulté — 1 seul showDialog
   void _showInviteDialog(BuildContext context, FriendModel friend) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -733,7 +752,7 @@ class _FriendCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              // Indicateur "En ligne"
+              // ✅ Indicateur online (toujours vrai ici car on a déjà vérifié)
               Row(
                 children: [
                   Container(
@@ -823,7 +842,6 @@ class _FriendCard extends StatelessWidget {
 
   Future<void> _inviteToDuel(
       BuildContext context, FriendModel friend, String difficulty) async {
-    // Afficher loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -831,7 +849,8 @@ class _FriendCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12)),
           child: const Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -847,14 +866,11 @@ class _FriendCard extends StatelessWidget {
     try {
       final duelProvider =
           Provider.of<DuelProvider>(context, listen: false);
+      // ✅ Appel réel au backend
       await duelProvider.challengeFriend(friend.id, difficulty);
 
       if (context.mounted) {
-        Navigator.of(context).pop(); // fermer loading
-
-        // ✅ Invitation envoyée — on reste sur l'écran amis
-        // L'ami reçoit une notification, quand il accepte
-        // une entrée apparaît dans l'onglet Duels de l'inviteur
+        Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -867,7 +883,7 @@ class _FriendCard extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.of(context).pop(); // fermer loading
+        Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Erreur: ${e.toString()}'),
           backgroundColor: AppColors.red,
@@ -899,7 +915,8 @@ class _FriendCard extends StatelessWidget {
                   content: Text(success
                       ? 'Ami retiré avec succès'
                       : 'Erreur lors de la suppression'),
-                  backgroundColor: success ? AppColors.green : AppColors.red,
+                  backgroundColor:
+                      success ? AppColors.green : AppColors.red,
                 ));
               }
             },
@@ -912,12 +929,12 @@ class _FriendCard extends StatelessWidget {
   }
 
   Color _leagueColor(String league) {
-    if (league.contains('Bronze'))   return const Color(0xFFCD7F32);
-    if (league.contains('Silver'))   return const Color(0xFFC0C0C0);
-    if (league.contains('Gold'))     return const Color(0xFFFFD700);
+    if (league.contains('Bronze')) return const Color(0xFFCD7F32);
+    if (league.contains('Silver')) return const Color(0xFFC0C0C0);
+    if (league.contains('Gold')) return const Color(0xFFFFD700);
     if (league.contains('Platinum')) return const Color(0xFFE5E4E2);
-    if (league.contains('Diamond'))  return const Color(0xFFB9F2FF);
-    if (league.contains('Master'))   return const Color(0xFF9B59B6);
+    if (league.contains('Diamond')) return const Color(0xFFB9F2FF);
+    if (league.contains('Master')) return const Color(0xFF9B59B6);
     return AppColors.gray500;
   }
 
@@ -1012,7 +1029,7 @@ class _DifficultyButton extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════
-// CARTE : Demande d'amitié reçue
+// CARTE : Demande d'amitié reçue — ✅ Avatar réel
 // ══════════════════════════════════════════════
 class _PendingRequestCard extends StatelessWidget {
   final FriendRequest request;
@@ -1040,16 +1057,11 @@ class _PendingRequestCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.purple, Color(0xFF7C3AED)],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: const Icon(Icons.person, color: Colors.white, size: 28),
+              // ✅ Avatar réel
+              AvatarWidget(
+                avatarId: request.avatar,
+                size: 48,
+                showBorder: false,
               ),
               const SizedBox(width: 12),
               Expanded(

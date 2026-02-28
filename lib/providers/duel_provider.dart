@@ -6,16 +6,19 @@ import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../config/constants.dart';
 
-// ✅ Modèle pour une invitation de duel reçue
+// ✅ DuelInvitation avec fromAvatarId pour afficher le vrai avatar
 class DuelInvitation {
   final int id;
   final String fromUsername;
+  // ✅ NOUVEAU : avatarId de l'expéditeur pour AvatarWidget
+  final String? fromAvatarId;
   final String difficulty;
   final DateTime createdAt;
 
   DuelInvitation({
     required this.id,
     required this.fromUsername,
+    this.fromAvatarId,
     required this.difficulty,
     required this.createdAt,
   });
@@ -24,6 +27,8 @@ class DuelInvitation {
     return DuelInvitation(
       id: json['id'] as int,
       fromUsername: json['from_username'] as String,
+      // ✅ Le backend doit renvoyer from_avatar (peut être null → avatar par défaut)
+      fromAvatarId: json['from_avatar'] as String?,
       difficulty: json['difficulty'] as String,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
     );
@@ -39,22 +44,21 @@ class DuelProvider with ChangeNotifier {
   bool _isSearching = false;
   bool _isDuelActive = false;
   bool _isEliminated = false;
-  bool _isLoading = false; // ✅ NOUVEAU
+  bool _isLoading = false;
   Timer? _timer;
   int _elapsedSeconds = 0;
   int _myMistakes = 0;
 
-  // Messages in-game
   List<DuelMessage> _messages = [];
   String? _lastOpponentMessage;
 
-  // ✅ NOUVEAU : Invitations de duel en attente
+  // ✅ Invitations de duel en attente (réelles)
   List<DuelInvitation> _pendingInvitations = [];
 
   final ApiService _apiService = ApiService();
   final SocketService _socketService = SocketService();
 
-  // ── Getters existants ──────────────────────────────────────
+  // ── Getters ──────────────────────────────────────
   DuelModel? get currentDuel => _currentDuel;
   List<List<int>> get playerGrid => _playerGrid;
   List<List<bool>> get initialCells => _initialCells;
@@ -66,8 +70,6 @@ class DuelProvider with ChangeNotifier {
   int get myMistakes => _myMistakes;
   List<DuelMessage> get messages => _messages;
   String? get lastOpponentMessage => _lastOpponentMessage;
-
-  // ✅ NOUVEAUX getters pour les invitations
   bool get isLoading => _isLoading;
   List<DuelInvitation> get pendingInvitations => _pendingInvitations;
   int get pendingInvitationsCount => _pendingInvitations.length;
@@ -128,40 +130,27 @@ class DuelProvider with ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════
-  // ✅ NOUVEAU : Invitations de duel
+  // ✅ Invitations de duel — APPEL API RÉEL
   // ══════════════════════════════════════════════
 
-  /// Charge les invitations de duel en attente
-  /// 🧪 SIMULATION : données hardcodées pour tester l'affichage
-  /// TODO: remplacer par l'appel API réel quand le backend est prêt
+  /// Charge les invitations de duel en attente depuis le backend
   Future<void> loadPendingDuelInvitations() async {
     _isLoading = true;
     notifyListeners();
 
-    // 🧪 Simule un délai réseau
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    // 🧪 Invitation simulée — Amine_Pro t'invite en mode "difficile"
-    _pendingInvitations = [
-      DuelInvitation(
-        id: 99,
-        fromUsername: 'Amine_Pro',
-        difficulty: 'difficile',
-        createdAt: DateTime.now().subtract(const Duration(minutes: 3)),
-      ),
-    ];
-
-    // Quand le backend sera prêt, remplace le bloc ci-dessus par :
-    // try {
-    //   final response = await _apiService.get('/duel/invitations/pending');
-    //   final List<dynamic> data = response is List ? response : (response['invitations'] ?? []);
-    //   _pendingInvitations = data
-    //       .map((item) => DuelInvitation.fromJson(item as Map<String, dynamic>))
-    //       .toList();
-    // } catch (e) {
-    //   print('Error loading duel invitations: $e');
-    //   _pendingInvitations = [];
-    // }
+    try {
+      final response = await _apiService.get('/duel/invitations/pending');
+      final List<dynamic> data = response is List
+          ? response
+          : (response['invitations'] ?? []);
+      _pendingInvitations = data
+          .map((item) =>
+              DuelInvitation.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print('Error loading duel invitations: $e');
+      _pendingInvitations = [];
+    }
 
     _isLoading = false;
     notifyListeners();
@@ -170,13 +159,11 @@ class DuelProvider with ChangeNotifier {
   /// Accepte une invitation de duel → renvoie true si succès
   Future<bool> acceptDuelInvitation(int invitationId) async {
     try {
-      final response =
-          await _apiService.post('/duel/invitations/$invitationId/accept', {});
+      final response = await _apiService
+          .post('/duel/invitations/$invitationId/accept', {});
 
-      // Retirer l'invitation de la liste locale
       _pendingInvitations.removeWhere((inv) => inv.id == invitationId);
 
-      // Charger le duel qui vient d'être créé
       _handleDuelFound(response is Map<String, dynamic> ? response : {});
 
       notifyListeners();
@@ -190,7 +177,8 @@ class DuelProvider with ChangeNotifier {
   /// Refuse une invitation de duel
   Future<void> declineDuelInvitation(int invitationId) async {
     try {
-      await _apiService.post('/duel/invitations/$invitationId/decline', {});
+      await _apiService
+          .post('/duel/invitations/$invitationId/decline', {});
       _pendingInvitations.removeWhere((inv) => inv.id == invitationId);
       notifyListeners();
     } catch (e) {
@@ -262,6 +250,7 @@ class DuelProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// ✅ Challenge un ami — appel réel au backend
   Future<void> challengeFriend(int friendId, String difficulty) async {
     try {
       _isSearching = true;
@@ -272,7 +261,10 @@ class DuelProvider with ChangeNotifier {
         'difficulty': difficulty,
       });
 
-      _handleDuelFound(response);
+      // ✅ On ne lance PAS le duel immédiatement côté inviteur :
+      // il attend que l'ami accepte. On remet isSearching à false.
+      _isSearching = false;
+      notifyListeners();
     } catch (e) {
       _isSearching = false;
       notifyListeners();

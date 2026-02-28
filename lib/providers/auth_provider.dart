@@ -149,7 +149,6 @@ class AuthProvider with ChangeNotifier {
   // PASSWORD RESET METHODS
   // ==========================================
   
-  // Request password reset
   Future<bool> requestPasswordReset(String email) async {
     _isLoading = true;
     _errorMessage = null;
@@ -171,7 +170,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
   
-  // Verify reset code
   Future<bool> verifyResetCode(String email, String code) async {
     _isLoading = true;
     _errorMessage = null;
@@ -194,7 +192,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
   
-  // Reset password
   Future<bool> resetPassword(String email, String code, String newPassword) async {
     _isLoading = true;
     _errorMessage = null;
@@ -219,10 +216,9 @@ class AuthProvider with ChangeNotifier {
   }
   
   // ==========================================
-  // NOUVEAU : PROFILE UPDATE METHODS
+  // PROFILE UPDATE METHODS
   // ==========================================
   
-  /// Update username
   Future<bool> updateUsername(String newUsername) async {
     _isLoading = true;
     _errorMessage = null;
@@ -233,7 +229,6 @@ class AuthProvider with ChangeNotifier {
         'username': newUsername,
       });
       
-      // Update local user
       if (_user != null) {
         _user = UserModel(
           id: _user!.id,
@@ -259,7 +254,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
   
-  /// Change password (when user is logged in)
   Future<bool> changePassword(String oldPassword, String newPassword) async {
     _isLoading = true;
     _errorMessage = null;
@@ -270,6 +264,79 @@ class AuthProvider with ChangeNotifier {
         'oldPassword': oldPassword,
         'newPassword': newPassword,
       });
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // ==========================================
+  // AVATAR UPDATE METHOD
+  // ==========================================
+  
+  Future<bool> updateAvatar(String avatarId) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    
+    try {
+      final response = await apiService.put('/user/avatar', {
+        'avatar': avatarId,
+      });
+      
+      // Update local user
+      if (_user != null) {
+        _user = UserModel(
+          id: _user!.id,
+          username: _user!.username,
+          email: _user!.email,
+          xp: _user!.xp,
+          level: _user!.level,
+          avatar: avatarId,
+          wins: _user!.wins,
+          streak: _user!.streak,
+          league: _user!.league,
+        );
+      }
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // ==========================================
+  // ✅ DELETE ACCOUNT METHOD
+  // ==========================================
+  
+  Future<bool> deleteAccount(String password) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    
+    try {
+      await apiService.delete('/user/account', body: {
+        'password': password,
+      });
+      
+      // Clear local data after successful deletion
+      _user = null;
+      _token = null;
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(AppConstants.tokenKey);
+      await prefs.remove(AppConstants.userIdKey);
       
       _isLoading = false;
       notifyListeners();

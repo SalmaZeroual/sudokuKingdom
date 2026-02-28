@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../config/theme.dart';
 import '../../models/friend_model.dart';
+import '../../widgets/avatar_widget.dart';
 
 class AddFriendScreen extends StatefulWidget {
   const AddFriendScreen({Key? key}) : super(key: key);
@@ -13,16 +14,16 @@ class AddFriendScreen extends StatefulWidget {
 
 class _AddFriendScreenState extends State<AddFriendScreen> {
   final TextEditingController _searchController = TextEditingController();
-  
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
-  
+
   void _onSearchChanged(String value) {
     final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
-    
+
     if (value.isEmpty) {
       friendsProvider.clearSearch();
     } else {
@@ -33,7 +34,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
   @override
   Widget build(BuildContext context) {
     final friendsProvider = Provider.of<FriendsProvider>(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ajouter un ami'),
@@ -81,7 +82,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
               ),
             ),
           ),
-          
+
           // Search results
           Expanded(
             child: _buildSearchResults(friendsProvider),
@@ -90,26 +91,18 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
       ),
     );
   }
-  
+
   Widget _buildSearchResults(FriendsProvider friendsProvider) {
-    // Searching state
     if (friendsProvider.isSearching) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
-    
-    // Empty state - no search
+
     if (_searchController.text.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.person_search,
-              size: 80,
-              color: AppColors.gray300,
-            ),
+            Icon(Icons.person_search, size: 80, color: AppColors.gray300),
             const SizedBox(height: 16),
             Text(
               'Recherchez un ami',
@@ -122,27 +115,19 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             const SizedBox(height: 8),
             Text(
               'Entrez le nom d\'utilisateur',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.gray400,
-              ),
+              style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
           ],
         ),
       );
     }
-    
-    // Empty state - no results
+
     if (friendsProvider.searchResults.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.search_off,
-              size: 80,
-              color: AppColors.gray300,
-            ),
+            Icon(Icons.search_off, size: 80, color: AppColors.gray300),
             const SizedBox(height: 16),
             Text(
               'Aucun résultat',
@@ -155,17 +140,13 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             const SizedBox(height: 8),
             Text(
               'Essayez avec un autre nom',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.gray400,
-              ),
+              style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
           ],
         ),
       );
     }
-    
-    // Results list
+
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: friendsProvider.searchResults.length,
@@ -179,18 +160,18 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
       },
     );
   }
-  
+
   Future<void> _handleAddFriend(FriendModel user) async {
     final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
     final success = await friendsProvider.sendFriendRequest(user.id);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            success 
-              ? 'Demande envoyée à ${user.username}' 
-              : 'Erreur lors de l\'envoi',
+            success
+                ? 'Demande envoyée à ${user.username}'
+                : 'Erreur lors de l\'envoi',
           ),
           backgroundColor: success ? AppColors.green : AppColors.red,
         ),
@@ -202,7 +183,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
 class _UserCard extends StatelessWidget {
   final FriendModel user;
   final VoidCallback onAddFriend;
-  
+
   const _UserCard({
     required this.user,
     required this.onAddFriend,
@@ -226,25 +207,15 @@ class _UserCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Avatar
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.purple, Color(0xFF7C3AED)],
-              ),
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: const Icon(
-              Icons.person,
-              color: Colors.white,
-              size: 32,
-            ),
+          // ✅ Avatar réel au lieu de l'icône générique
+          AvatarWidget(
+            avatarId: user.avatar,
+            size: 56,
+            showBorder: false,
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // User info
           Expanded(
             child: Column(
@@ -264,7 +235,8 @@ class _UserCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: AppColors.blue.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -292,41 +264,32 @@ class _UserCard extends StatelessWidget {
                     Text(
                       user.league,
                       style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.gray600,
-                      ),
+                          fontSize: 13, color: AppColors.gray600),
                     ),
                     const SizedBox(width: 12),
-                    Icon(
-                      Icons.stars,
-                      size: 14,
-                      color: AppColors.yellow,
-                    ),
+                    Icon(Icons.stars, size: 14, color: AppColors.yellow),
                     const SizedBox(width: 4),
                     Text(
                       '${user.xp} XP',
                       style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.gray600,
-                      ),
+                          fontSize: 13, color: AppColors.gray600),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          
+
           const SizedBox(width: 12),
-          
+
           // Action button
           _buildActionButton(),
         ],
       ),
     );
   }
-  
+
   Widget _buildActionButton() {
-    // Already friends
     if (user.friendshipStatus == 'accepted') {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -337,26 +300,20 @@ class _UserCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.check_circle,
-              size: 16,
-              color: AppColors.green,
-            ),
+            Icon(Icons.check_circle, size: 16, color: AppColors.green),
             const SizedBox(width: 6),
             Text(
               'Amis',
               style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: AppColors.green,
-              ),
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.green),
             ),
           ],
         ),
       );
     }
-    
-    // Pending request
+
     if (user.friendshipStatus == 'pending') {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -367,26 +324,20 @@ class _UserCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.schedule,
-              size: 16,
-              color: AppColors.orange,
-            ),
+            Icon(Icons.schedule, size: 16, color: AppColors.orange),
             const SizedBox(width: 6),
             Text(
               'En attente',
               style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: AppColors.orange,
-              ),
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.orange),
             ),
           ],
         ),
       );
     }
-    
-    // Can add as friend
+
     return ElevatedButton.icon(
       onPressed: onAddFriend,
       icon: const Icon(Icons.person_add, size: 16),
@@ -395,14 +346,12 @@ class _UserCard extends StatelessWidget {
         backgroundColor: AppColors.blue,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         elevation: 0,
       ),
     );
   }
-  
+
   Color _getLeagueColor(String league) {
     if (league.contains('Bronze')) return const Color(0xFFCD7F32);
     if (league.contains('Silver')) return const Color(0xFFC0C0C0);

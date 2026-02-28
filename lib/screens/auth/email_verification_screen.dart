@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
-import '../home_screen.dart';
+import '../avatar_selection_screen.dart'; 
 
 class EmailVerificationScreen extends StatefulWidget {
   final String email;
@@ -89,13 +89,16 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Email vérifié avec succès !'),
+            content: Text('✅ Email vérifié avec succès !'),
             backgroundColor: AppColors.green,
           ),
         );
         
+        // ✅ MODIFIÉ : Redirection vers sélection avatar au lieu de Home
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => const AvatarSelectionScreen(canSkip: true),
+          ),
           (route) => false,
         );
       }
@@ -269,34 +272,34 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       )
                     : const Text(
                         'Vérifier',
-                         style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+              
+              const SizedBox(height: 24),
+              
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Code non reçu ? ',
+                    style: TextStyle(color: AppColors.gray500),
+                  ),
+                  TextButton(
+                    onPressed: _canResend && !authProvider.isLoading ? _resendCode : null,
+                    child: Text(
+                      _canResend ? 'Renvoyer' : 'Renvoyer (${_resendCountdown}s)',
                     ),
                   ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Code non reçu ? ',
-                style: TextStyle(color: AppColors.gray500),
-              ),
-              TextButton(
-                onPressed: _canResend && !authProvider.isLoading ? _resendCode : null,
-                child: Text(
-                  _canResend ? 'Renvoyer' : 'Renvoyer (${_resendCountdown}s)',
-                ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
-    ),
-  ),
-);
-}
+    );
+  }
 }

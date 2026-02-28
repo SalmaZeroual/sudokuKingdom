@@ -5,6 +5,7 @@ import '../providers/game_provider.dart';
 import '../config/theme.dart';
 import '../widgets/mode_card.dart';
 import '../widgets/stat_card.dart';
+import '../widgets/avatar_widget.dart'; // ✅ AJOUTÉ
 import 'modes/classic_mode_screen.dart';
 import 'modes/duel_mode_screen.dart';
 import 'modes/tournament_mode_screen.dart';
@@ -91,7 +92,6 @@ class _HomeContentState extends State<_HomeContent> {
   @override
   void initState() {
     super.initState();
-    // Check for active game after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForActiveGame();
     });
@@ -286,17 +286,12 @@ class _HomeContentState extends State<_HomeContent> {
                           ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.castle,
-                          color: AppColors.yellow,
-                          size: 40,
-                        ),
+                      // ✅ MODIFIÉ : Avatar au lieu de l'icône château
+                      AvatarWidget(
+                        avatarId: user?.avatar,
+                        size: 56,
+                        showBorder: true,
+                        borderWidth: 2,
                       ),
                     ],
                   ),
@@ -372,103 +367,103 @@ class _HomeContentState extends State<_HomeContent> {
                   icon: Icons.sports_kabaddi,
                   title: 'Duel',
                   subtitle: 'Affrontement temps réel',
-              gradient: const [AppColors.red, AppColors.orange],
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const DuelModeScreen()),
-                );
-              },
+                  gradient: const [AppColors.red, AppColors.orange],
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const DuelModeScreen()),
+                    );
+                  },
+                ),
+                ModeCard(
+                  icon: Icons.emoji_events,
+                  title: 'Tournoi',
+                  subtitle: 'Classement mondial',
+                  gradient: const [AppColors.yellow, Color(0xFFF59E0B)],
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const TournamentModeScreen()),
+                    );
+                  },
+                ),
+                ModeCard(
+                  icon: Icons.auto_stories,
+                  title: 'Énigme',
+                  subtitle: 'Histoire & aventure',
+                  gradient: const [AppColors.purple, Color(0xFF7C3AED)],
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const StoryModeScreen()),
+                    );
+                  },
+                ),
+              ],
             ),
-            ModeCard(
-              icon: Icons.emoji_events,
-              title: 'Tournoi',
-              subtitle: 'Classement mondial',
-              gradient: const [AppColors.yellow, Color(0xFFF59E0B)],
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const TournamentModeScreen()),
-                );
-              },
+            
+            const SizedBox(height: 24),
+            
+            // Daily Challenge
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.orange, AppColors.red],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.orange.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Défi Quotidien',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Grille spéciale 🎃',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '08:45',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            ModeCard(
-              icon: Icons.auto_stories,
-              title: 'Énigme',
-              subtitle: 'Histoire & aventure',
-              gradient: const [AppColors.purple, Color(0xFF7C3AED)],
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const StoryModeScreen()),
-                );
-              },
-            ),
+            
+            const SizedBox(height: 20),
           ],
         ),
-        
-        const SizedBox(height: 24),
-        
-        // Daily Challenge
-        Container(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.orange, AppColors.red],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.orange.withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Défi Quotidien',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Grille spéciale 🎃',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  const Icon(Icons.access_time, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '08:45',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        
-        const SizedBox(height: 20),
-      ],
-    ),
-  ),
-);
-}
+      ),
+    );
+  }
 }

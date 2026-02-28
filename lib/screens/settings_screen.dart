@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
+import '../widgets/avatar_widget.dart'; // ✅ AJOUTÉ
+import 'avatar_selection_screen.dart'; // ✅ AJOUTÉ
 import 'tutorial/tutorial_settings_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -57,13 +59,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSectionHeader('PROFIL'),
           const SizedBox(height: 8),
           
+          // ✅ MODIFIÉ : Avatar + bouton éditer
           ListTile(
-            leading: CircleAvatar(
-              backgroundColor: AppColors.blue.withOpacity(0.1),
-              child: Icon(Icons.person, color: AppColors.blue),
+            leading: AvatarWidget(
+              avatarId: user?.avatar,
+              size: 50,
+              showEditButton: false,
+              showBorder: true,
+              borderWidth: 2,
             ),
             title: Text(user?.username ?? 'Utilisateur'),
             subtitle: Text(user?.email ?? 'email@example.com'),
+            trailing: IconButton(
+              icon: const Icon(Icons.edit, color: AppColors.blue),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AvatarSelectionScreen(canSkip: false),
+                  ),
+                );
+              },
+            ),
+          ),
+          
+          ListTile(
+            leading: const Icon(Icons.person_outline, color: AppColors.green),
+            title: const Text('Modifier le pseudo'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () => _showEditProfileDialog(context),
           ),
@@ -73,6 +94,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Changer le mot de passe'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () => _showChangePasswordDialog(context),
+          ),
+
+          // ✅ Supprimer mon compte
+          ListTile(
+            leading: const Icon(Icons.delete_forever, color: AppColors.red),
+            title: const Text(
+              'Supprimer mon compte',
+              style: TextStyle(color: AppColors.red),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.red),
+            onTap: () => _showDeleteAccountDialog(context),
           ),
           
           const Divider(height: 32),
@@ -364,7 +396,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               final newUsername = controller.text.trim();
               
-              // Validation
               if (newUsername.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -390,45 +421,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 return;
               }
               
-              // Show loading
               showDialog(
                 context: context,
                 barrierDismissible: false,
-                builder: (context) => const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                builder: (context) => const Center(child: CircularProgressIndicator()),
               );
               
-              // Call API
               final success = await authProvider.updateUsername(newUsername);
               
-              // Hide loading
-              if (context.mounted) {
-                Navigator.of(context).pop();
-              }
+              if (context.mounted) Navigator.of(context).pop();
+              if (context.mounted) Navigator.of(context).pop();
               
-              // Close dialog
               if (context.mounted) {
-                Navigator.of(context).pop();
-              }
-              
-              // Show result
-              if (context.mounted) {
-                if (success) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Profil mis à jour'),
-                      backgroundColor: AppColors.green,
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('❌ ${authProvider.errorMessage ?? "Erreur lors de la mise à jour"}'),
-                      backgroundColor: AppColors.red,
-                    ),
-                  );
-                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success
+                        ? '✅ Profil mis à jour'
+                        : '❌ ${authProvider.errorMessage ?? "Erreur lors de la mise à jour"}'),
+                    backgroundColor: success ? AppColors.green : AppColors.red,
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.blue),
@@ -508,104 +520,237 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                // Validation
                 final oldPassword = oldPasswordController.text;
                 final newPassword = newPasswordController.text;
                 final confirmPassword = confirmPasswordController.text;
                 
                 if (oldPassword.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ Veuillez entrer votre ancien mot de passe'),
-                      backgroundColor: AppColors.red,
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('❌ Veuillez entrer votre ancien mot de passe'),
+                    backgroundColor: AppColors.red,
+                  ));
                   return;
                 }
-                
                 if (newPassword.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ Veuillez entrer un nouveau mot de passe'),
-                      backgroundColor: AppColors.red,
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('❌ Veuillez entrer un nouveau mot de passe'),
+                    backgroundColor: AppColors.red,
+                  ));
                   return;
                 }
-                
                 if (newPassword.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ Le mot de passe doit contenir au moins 6 caractères'),
-                      backgroundColor: AppColors.red,
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('❌ Le mot de passe doit contenir au moins 6 caractères'),
+                    backgroundColor: AppColors.red,
+                  ));
                   return;
                 }
-                
                 if (newPassword != confirmPassword) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ Les mots de passe ne correspondent pas'),
-                      backgroundColor: AppColors.red,
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('❌ Les mots de passe ne correspondent pas'),
+                    backgroundColor: AppColors.red,
+                  ));
                   return;
                 }
-                
                 if (oldPassword == newPassword) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ Le nouveau mot de passe doit être différent de l\'ancien'),
-                      backgroundColor: AppColors.red,
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('❌ Le nouveau mot de passe doit être différent de l\'ancien'),
+                    backgroundColor: AppColors.red,
+                  ));
                   return;
                 }
                 
-                // Show loading
                 showDialog(
                   context: context,
                   barrierDismissible: false,
-                  builder: (context) => const Center(
-                    child: CircularProgressIndicator(),
-                  ),
+                  builder: (context) => const Center(child: CircularProgressIndicator()),
                 );
                 
-                // Call API
                 final success = await authProvider.changePassword(oldPassword, newPassword);
                 
-                // Hide loading
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                }
+                if (context.mounted) Navigator.of(context).pop();
+                if (context.mounted) Navigator.of(context).pop();
                 
-                // Close dialog
                 if (context.mounted) {
-                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(success
+                        ? '✅ Mot de passe modifié avec succès'
+                        : '❌ ${authProvider.errorMessage ?? "Erreur lors du changement de mot de passe"}'),
+                    backgroundColor: success ? AppColors.green : AppColors.red,
+                  ));
                 }
-                
-                // Show result
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.blue),
+              child: const Text('Modifier'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _showDeleteAccountDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: AppColors.red, size: 28),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Supprimer mon compte',
+                style: TextStyle(fontSize: 17),
+              ),
+            ),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Êtes-vous sûr de vouloir supprimer votre compte ?',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              SizedBox(height: 12),
+              Text('⚠️ Cette action est irréversible. Vous allez perdre :'),
+              SizedBox(height: 8),
+              Text('  • Tout votre avancement et progression'),
+              Text('  • Vos scores et classements'),
+              Text('  • Vos statistiques de jeu'),
+              Text('  • Vos boosters et récompenses'),
+              Text('  • Votre série de victoires (streak)'),
+              SizedBox(height: 12),
+              Text(
+                'Il sera impossible de récupérer votre compte après suppression.',
+                style: TextStyle(
+                  color: AppColors.red,
+                  fontStyle: FontStyle.italic,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _showDeleteAccountPasswordDialog(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+            child: const Text(
+              'Oui, continuer',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountPasswordDialog(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final passwordController = TextEditingController();
+    bool obscurePassword = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Confirmer la suppression'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Pour confirmer, entrez votre mot de passe.\nCette suppression est définitive et irréversible.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                decoration: InputDecoration(
+                  labelText: 'Mot de passe',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePassword ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () =>
+                        setState(() => obscurePassword = !obscurePassword),
+                  ),
+                  border: const OutlineInputBorder(),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.red, width: 2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final password = passwordController.text;
+
+                if (password.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('❌ Veuillez entrer votre mot de passe'),
+                      backgroundColor: AppColors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) =>
+                      const Center(child: CircularProgressIndicator()),
+                );
+
+                final success = await authProvider.deleteAccount(password);
+
+                if (context.mounted) Navigator.of(context).pop();
+                if (context.mounted) Navigator.of(context).pop();
+
                 if (context.mounted) {
                   if (success) {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('✅ Mot de passe modifié avec succès'),
-                        backgroundColor: AppColors.green,
+                        content: Text('✅ Votre compte a été supprimé'),
+                        backgroundColor: AppColors.gray700,
                       ),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('❌ ${authProvider.errorMessage ?? "Erreur lors du changement de mot de passe"}'),
+                        content: Text(
+                          '❌ ${authProvider.errorMessage ?? "Mot de passe incorrect ou erreur serveur"}',
+                        ),
                         backgroundColor: AppColors.red,
                       ),
                     );
                   }
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.blue),
-              child: const Text('Modifier'),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+              child: const Text(
+                'Supprimer définitivement',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -684,7 +829,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              // TODO: Envoyer le rapport de bug au backend
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -722,7 +866,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.red),
-            child: const Text('Déconnecter'),
+            child: const Text('Déconnexer'),
           ),
         ],
       ),

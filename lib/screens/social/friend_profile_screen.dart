@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/api_service.dart';
 import '../../config/theme.dart';
+import '../../widgets/avatar_widget.dart'; // ✅ AJOUTÉ
 
 class FriendProfileScreen extends StatefulWidget {
   final int friendId;
@@ -140,26 +141,12 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
             ),
             child: Column(
               children: [
-                // Avatar
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(50),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.person,
-                    size: 56,
-                    color: AppColors.blue,
-                  ),
+                // ✅ MODIFIÉ : Avatar personnalisé au lieu de l'icône générique
+                AvatarWidget(
+                  avatarId: user['avatar'],
+                  size: 100,
+                  showBorder: true,
+                  borderWidth: 3,
                 ),
                 
                 const SizedBox(height: 16),
@@ -502,7 +489,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
               
               if (context.mounted) {
                 if (success) {
-                  Navigator.of(context).pop(); // Retour à la liste des amis
+                  Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Ami retiré avec succès'),
