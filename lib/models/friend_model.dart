@@ -23,8 +23,10 @@ class FriendModel {
   });
 
   factory FriendModel.fromJson(Map<String, dynamic> json) {
+    // some APIs return `id`, others `friend_id` for the user identifier
+    final idVal = json['id'] ?? json['friend_id'];
     return FriendModel(
-      id: json['id'],
+      id: idVal is int ? idVal : int.tryParse('$idVal') ?? 0,
       username: json['username'],
       level: json['level'] ?? 1,
       avatar: json['avatar'],

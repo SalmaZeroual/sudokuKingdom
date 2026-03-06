@@ -30,13 +30,27 @@ class FriendsProvider with ChangeNotifier {
     notifyListeners();
     
     try {
-      final response = await _apiService.get('/social/friends');
-      _friends = (response as List).map((f) => FriendModel.fromJson(f)).toList();
+      dynamic response = await _apiService.get('/social/friends');
+      // defensive: older API used to return { friends: [...] }
+      if (response is Map && response.containsKey('friends')) {
+        response = response['friends'];
+      }
+      // log for debugging if something weird comes back
+      debugPrint('Friends API response: $response');
+      
+      if (response is List) {
+        _friends = response.map((f) => FriendModel.fromJson(f)).toList();
+      } else {
+        // unexpected shape, keep list empty and record error
+        _errorMessage = 'Unexpected friends response';
+        _friends = [];
+      }
       
       _isLoading = false;
       notifyListeners();
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
+      debugPrint('loadFriends error: $e');
       _isLoading = false;
       notifyListeners();
     }
