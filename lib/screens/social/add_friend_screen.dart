@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../config/theme.dart';
@@ -26,8 +27,12 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
 
     if (value.isEmpty) {
       friendsProvider.clearSearch();
-    } else {
+    } else if (value.length == 10 && RegExp(r'^\d{10}$').hasMatch(value)) {
+      // ✅ Recherche uniquement si exactement 10 chiffres
       friendsProvider.searchUsers(value);
+    } else {
+      // ✅ Effacer les résultats si ce n'est pas 10 chiffres
+      friendsProvider.clearSearch();
     }
   }
 
@@ -41,7 +46,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
       ),
       body: Column(
         children: [
-          // Search bar
+          // ✅ Search bar pour ID à 10 chiffres
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -54,32 +59,53 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 ),
               ],
             ),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              decoration: InputDecoration(
-                hintText: 'Rechercher un utilisateur...',
-                prefixIcon: Icon(Icons.search, color: AppColors.gray500),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear, color: AppColors.gray500),
-                        onPressed: () {
-                          _searchController.clear();
-                          friendsProvider.clearSearch();
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: AppColors.gray100,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  keyboardType: TextInputType.number, // ✅ Clavier numérique
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly, // ✅ Chiffres uniquement
+                    LengthLimitingTextInputFormatter(10), // ✅ Max 10 caractères
+                  ],
+                  decoration: InputDecoration(
+                    hintText: 'Entrez l\'ID à 10 chiffres...', // ✅ Texte modifié
+                    prefixIcon: Icon(Icons.badge, color: AppColors.blue),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear, color: AppColors.gray500),
+                            onPressed: () {
+                              _searchController.clear();
+                              friendsProvider.clearSearch();
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: AppColors.gray100,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                const SizedBox(height: 8),
+                // ✅ Indicateur du nombre de chiffres
+                Text(
+                  '${_searchController.text.length}/10 chiffres',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _searchController.text.length == 10 
+                        ? AppColors.green 
+                        : AppColors.gray500,
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
 
@@ -102,7 +128,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.person_search, size: 80, color: AppColors.gray300),
+            Icon(Icons.badge, size: 80, color: AppColors.blue.withOpacity(0.3)),
             const SizedBox(height: 16),
             Text(
               'Recherchez un ami',
@@ -114,7 +140,59 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Entrez le nom d\'utilisateur',
+              'Entrez l\'ID à 10 chiffres',
+              style: TextStyle(fontSize: 14, color: AppColors.gray400),
+            ),
+            const SizedBox(height: 24),
+            // ✅ Carte d'explication
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.blue.withOpacity(0.3)),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.info_outline, color: AppColors.blue, size: 24),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Chaque utilisateur possède un ID unique à 10 chiffres visible dans son profil.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.gray700,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ✅ Message si moins de 10 chiffres
+    if (_searchController.text.length < 10) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.dialpad, size: 80, color: AppColors.orange.withOpacity(0.3)),
+            const SizedBox(height: 16),
+            Text(
+              'Continuez à taper...',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: AppColors.gray500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'L\'ID doit contenir exactement 10 chiffres',
               style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
           ],
@@ -130,7 +208,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             Icon(Icons.search_off, size: 80, color: AppColors.gray300),
             const SizedBox(height: 16),
             Text(
-              'Aucun résultat',
+              'Aucun utilisateur trouvé',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
@@ -139,7 +217,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Essayez avec un autre nom',
+              'Vérifiez l\'ID à 10 chiffres',
               style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
           ],
@@ -207,7 +285,7 @@ class _UserCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // ✅ Avatar réel au lieu de l'icône générique
+          // ✅ Avatar réel
           AvatarWidget(
             avatarId: user.avatar,
             size: 56,

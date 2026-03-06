@@ -7,8 +7,8 @@ class FriendModel {
   final String league;
   final String? friendshipStatus;
   final DateTime? friendsSince;
-  // ✅ isOnline est maintenant un vrai champ venant du backend
   final bool isOnline;
+  final String? uniqueId; // ✅ AJOUTÉ
 
   FriendModel({
     required this.id,
@@ -20,10 +20,10 @@ class FriendModel {
     this.friendshipStatus,
     this.friendsSince,
     this.isOnline = false,
+    this.uniqueId, // ✅ AJOUTÉ
   });
 
   factory FriendModel.fromJson(Map<String, dynamic> json) {
-    // some APIs return `id`, others `friend_id` for the user identifier
     final idVal = json['id'] ?? json['friend_id'];
     return FriendModel(
       id: idVal is int ? idVal : int.tryParse('$idVal') ?? 0,
@@ -36,8 +36,8 @@ class FriendModel {
       friendsSince: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
-      // ✅ Le backend doit renvoyer is_online: true/false
       isOnline: json['is_online'] == true || json['is_online'] == 1,
+      uniqueId: json['unique_id'], // ✅ AJOUTÉ
     );
   }
 
@@ -79,6 +79,36 @@ class FriendRequest {
       avatar: json['avatar'],
       xp: json['xp'] ?? 0,
       league: json['league'] ?? 'Bronze I',
+      createdAt: DateTime.parse(json['created_at']),
+    );
+  }
+}
+
+// ✅ NOUVEAU : DuelInvitation avec avatar
+class DuelInvitation {
+  final int id;
+  final int fromUserId;
+  final String fromUsername;
+  final String fromAvatarId; // ✅ Avatar de l'inviteur
+  final String difficulty;
+  final DateTime createdAt;
+
+  DuelInvitation({
+    required this.id,
+    required this.fromUserId,
+    required this.fromUsername,
+    required this.fromAvatarId,
+    required this.difficulty,
+    required this.createdAt,
+  });
+
+  factory DuelInvitation.fromJson(Map<String, dynamic> json) {
+    return DuelInvitation(
+      id: json['id'],
+      fromUserId: json['from_user_id'],
+      fromUsername: json['from_username'],
+      fromAvatarId: json['from_user_avatar'] ?? 'king',
+      difficulty: json['difficulty'],
       createdAt: DateTime.parse(json['created_at']),
     );
   }

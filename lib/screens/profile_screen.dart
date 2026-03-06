@@ -89,34 +89,34 @@ class ProfileScreen extends StatelessWidget {
             
             const SizedBox(height: 8),
             
-            // ✅ NOUVEAU : Affichage de l'ID unique avec bouton copier
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.blue.withOpacity(0.3)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.badge, size: 20, color: AppColors.blue),
-                  const SizedBox(width: 8),
-                  Text(
-                    'ID: ${user?.uniqueId ?? '----------'}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.blue,
-                      letterSpacing: 1.5,
+            // ✅ CORRIGÉ : Affichage de l'ID unique avec bouton copier
+            if (user?.uniqueId != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.badge, size: 20, color: AppColors.blue),
+                    const SizedBox(width: 8),
+                    Text(
+                      'ID: ${user!.uniqueId}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.blue,
+                        letterSpacing: 1.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(Icons.copy, size: 18, color: AppColors.blue),
-                    onPressed: () {
-                      if (user?.uniqueId != null) {
-                        Clipboard.setData(ClipboardData(text: user!.uniqueId!));
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(Icons.copy, size: 18, color: AppColors.blue),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: user.uniqueId!));
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: const Text('✅ ID copié dans le presse-papier !'),
@@ -124,15 +124,14 @@ class ProfileScreen extends StatelessWidget {
                             duration: const Duration(seconds: 2),
                           ),
                         );
-                      }
-                    },
-                    tooltip: 'Copier l\'ID',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
+                      },
+                      tooltip: 'Copier l\'ID',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
               ),
-            ),
             
             const SizedBox(height: 16),
             

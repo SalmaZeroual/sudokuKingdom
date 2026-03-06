@@ -8,6 +8,7 @@ class UserModel {
   final int wins;
   final int streak;
   final String league;
+  final String? uniqueId; // ✅ AJOUTÉ
   
   UserModel({
     required this.id,
@@ -19,6 +20,7 @@ class UserModel {
     required this.wins,
     required this.streak,
     required this.league,
+    this.uniqueId, // ✅ AJOUTÉ
   });
   
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class UserModel {
       wins: json['wins'] ?? 0,
       streak: json['streak'] ?? 0,
       league: json['league'] ?? 'Bronze I',
+      uniqueId: json['unique_id'], // ✅ AJOUTÉ
     );
   }
   
@@ -46,6 +49,7 @@ class UserModel {
       'wins': wins,
       'streak': streak,
       'league': league,
+      'unique_id': uniqueId, // ✅ AJOUTÉ
     };
   }
   
