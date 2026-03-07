@@ -4,10 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
-import '../widgets/avatar_widget.dart'; // ✅ AJOUTÉ
-import 'avatar_selection_screen.dart'; // ✅ AJOUTÉ
+import '../widgets/avatar_widget.dart';
+import 'avatar_selection_screen.dart';
 import 'tutorial/tutorial_settings_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'privacy_policy_screen.dart';
+import 'terms_of_service_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -59,7 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSectionHeader('PROFIL'),
           const SizedBox(height: 8),
           
-          // ✅ MODIFIÉ : Avatar + bouton éditer
+          // ✅ Avatar + bouton éditer
           ListTile(
             leading: AvatarWidget(
               avatarId: user?.avatar,
@@ -196,6 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSectionHeader('NOS AUTRES JEUX'),
           const SizedBox(height: 8),
           
+          // ✅ CORRIGÉ : Chess Kingdom "Bientôt" sans onTap
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(8),
@@ -208,23 +210,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('♔', style: TextStyle(fontSize: 24)),
             ),
             title: const Text('Chess Kingdom'),
-            subtitle: const Text('Devenez maître des échecs'),
+            subtitle: const Text('Devenez maître des échecs - Bientôt disponible'),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.blue,
+                color: AppColors.gray300,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
-                'Jouer',
+                'Bientôt',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.gray700,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
               ),
             ),
-            onTap: () => _launchURL('https://chesskingdom.app'),
           ),
           
           ListTile(
@@ -310,15 +311,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined, color: AppColors.green),
             title: const Text('Politique de confidentialité'),
-            trailing: const Icon(Icons.open_in_new, size: 16),
-            onTap: () => _launchURL('https://sudokukingdom.app/privacy'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+              );
+            },
           ),
           
           ListTile(
             leading: const Icon(Icons.description_outlined, color: AppColors.orange),
             title: const Text('Conditions d\'utilisation'),
-            trailing: const Icon(Icons.open_in_new, size: 16),
-            onTap: () => _launchURL('https://sudokukingdom.app/terms'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const TermsOfServiceScreen()),
+              );
+            },
           ),
           
           const SizedBox(height: 32),
@@ -828,16 +837,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('Annuler'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              final description = controller.text.trim();
+              
+              if (description.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('❌ Veuillez décrire le problème'),
+                    backgroundColor: AppColors.red,
+                  ),
+                );
+                return;
+              }
+              
               Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('✅ Merci pour votre retour !'),
-                  backgroundColor: AppColors.green,
+              
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(),
                 ),
               );
+              
+              try {
+                // ✅ Le middleware authenticate récupère automatiquement le user
+                final response = await ApiService().post(
+                  '/support/report-bug',
+                  {'description': description},
+                );
+                
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Bug signalé avec succès ! Merci pour votre retour.'),
+                      backgroundColor: AppColors.green,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('❌ Erreur : ${e.toString()}'),
+                      backgroundColor: AppColors.red,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
+              }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.blue),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.blue,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Envoyer'),
           ),
         ],
@@ -871,18 +929,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-  }
-  
-  Future<void> _launchURL(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible d\'ouvrir le lien')),
-        );
-      }
-    }
   }
 }
