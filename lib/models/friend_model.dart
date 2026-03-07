@@ -8,7 +8,7 @@ class FriendModel {
   final String? friendshipStatus;
   final DateTime? friendsSince;
   final bool isOnline;
-  final String? uniqueId; // ✅ AJOUTÉ
+  final String? uniqueId;
 
   FriendModel({
     required this.id,
@@ -20,7 +20,7 @@ class FriendModel {
     this.friendshipStatus,
     this.friendsSince,
     this.isOnline = false,
-    this.uniqueId, // ✅ AJOUTÉ
+    this.uniqueId,
   });
 
   factory FriendModel.fromJson(Map<String, dynamic> json) {
@@ -37,7 +37,7 @@ class FriendModel {
           ? DateTime.parse(json['created_at'])
           : null,
       isOnline: json['is_online'] == true || json['is_online'] == 1,
-      uniqueId: json['unique_id'], // ✅ AJOUTÉ
+      uniqueId: json['unique_id'],
     );
   }
 
@@ -84,12 +84,11 @@ class FriendRequest {
   }
 }
 
-// ✅ NOUVEAU : DuelInvitation avec avatar
 class DuelInvitation {
   final int id;
   final int fromUserId;
   final String fromUsername;
-  final String fromAvatarId; // ✅ Avatar de l'inviteur
+  final String fromAvatarId;
   final String difficulty;
   final DateTime createdAt;
 
@@ -107,7 +106,7 @@ class DuelInvitation {
       id: json['id'],
       fromUserId: json['from_user_id'],
       fromUsername: json['from_username'],
-      fromAvatarId: json['from_user_avatar'] ?? 'king',
+      fromAvatarId: json['from_avatar'] ?? 'king', // ✅ correspond au SELECT backend
       difficulty: json['difficulty'],
       createdAt: DateTime.parse(json['created_at']),
     );

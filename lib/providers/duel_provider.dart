@@ -2,38 +2,10 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/duel_model.dart';
+import '../models/friend_model.dart'; // ✅ DuelInvitation vient d'ici
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../config/constants.dart';
-
-// ✅ DuelInvitation avec fromAvatarId pour afficher le vrai avatar
-class DuelInvitation {
-  final int id;
-  final String fromUsername;
-  // ✅ NOUVEAU : avatarId de l'expéditeur pour AvatarWidget
-  final String? fromAvatarId;
-  final String difficulty;
-  final DateTime createdAt;
-
-  DuelInvitation({
-    required this.id,
-    required this.fromUsername,
-    this.fromAvatarId,
-    required this.difficulty,
-    required this.createdAt,
-  });
-
-  factory DuelInvitation.fromJson(Map<String, dynamic> json) {
-    return DuelInvitation(
-      id: json['id'] as int,
-      fromUsername: json['from_username'] as String,
-      // ✅ Le backend doit renvoyer from_avatar (peut être null → avatar par défaut)
-      fromAvatarId: json['from_avatar'] as String?,
-      difficulty: json['difficulty'] as String,
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
-    );
-  }
-}
 
 class DuelProvider with ChangeNotifier {
   DuelModel? _currentDuel;
@@ -52,7 +24,6 @@ class DuelProvider with ChangeNotifier {
   List<DuelMessage> _messages = [];
   String? _lastOpponentMessage;
 
-  // ✅ Invitations de duel en attente (réelles)
   List<DuelInvitation> _pendingInvitations = [];
 
   final ApiService _apiService = ApiService();
@@ -82,21 +53,16 @@ class DuelProvider with ChangeNotifier {
 
   int get myProgress {
     if (_playerGrid.isEmpty || _initialCells.isEmpty) return 0;
-
     int filledByPlayer = 0;
     int totalEmptyCells = 0;
-
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 9; j++) {
         if (!_initialCells[i][j]) {
           totalEmptyCells++;
-          if (_playerGrid[i][j] != 0) {
-            filledByPlayer++;
-          }
+          if (_playerGrid[i][j] != 0) filledByPlayer++;
         }
       }
     }
-
     if (totalEmptyCells == 0) return 100;
     return (filledByPlayer / totalEmptyCells * 100).round();
   }
@@ -104,23 +70,16 @@ class DuelProvider with ChangeNotifier {
   int get opponentProgress {
     if (_currentDuel == null) return 0;
     final isPlayer1 = _currentDuel!.player1Id == _getCurrentUserId();
-    return isPlayer1
-        ? _currentDuel!.player2Progress
-        : _currentDuel!.player1Progress;
+    return isPlayer1 ? _currentDuel!.player2Progress : _currentDuel!.player1Progress;
   }
 
   int get opponentMistakes {
     if (_currentDuel == null) return 0;
     final isPlayer1 = _currentDuel!.player1Id == _getCurrentUserId();
-    return isPlayer1
-        ? _currentDuel!.player2Mistakes
-        : _currentDuel!.player1Mistakes;
+    return isPlayer1 ? _currentDuel!.player2Mistakes : _currentDuel!.player1Mistakes;
   }
 
-  int _getCurrentUserId() {
-    return _currentUserId ?? 0;
-  }
-
+  int _getCurrentUserId() => _currentUserId ?? 0;
   int? _currentUserId;
 
   Future<int> _loadUserId() async {
@@ -130,42 +89,33 @@ class DuelProvider with ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════
-  // ✅ Invitations de duel — APPEL API RÉEL
+  // INVITATIONS DE DUEL
   // ══════════════════════════════════════════════
 
-  /// Charge les invitations de duel en attente depuis le backend
   Future<void> loadPendingDuelInvitations() async {
     _isLoading = true;
     notifyListeners();
-
     try {
       final response = await _apiService.get('/duel/invitations/pending');
       final List<dynamic> data = response is List
           ? response
           : (response['invitations'] ?? []);
       _pendingInvitations = data
-          .map((item) =>
-              DuelInvitation.fromJson(item as Map<String, dynamic>))
+          .map((item) => DuelInvitation.fromJson(item as Map<String, dynamic>))
           .toList();
     } catch (e) {
       print('Error loading duel invitations: $e');
       _pendingInvitations = [];
     }
-
     _isLoading = false;
     notifyListeners();
   }
 
-  /// Accepte une invitation de duel → renvoie true si succès
   Future<bool> acceptDuelInvitation(int invitationId) async {
     try {
-      final response = await _apiService
-          .post('/duel/invitations/$invitationId/accept', {});
-
+      final response = await _apiService.post('/duel/invitations/$invitationId/accept', {});
       _pendingInvitations.removeWhere((inv) => inv.id == invitationId);
-
       _handleDuelFound(response is Map<String, dynamic> ? response : {});
-
       notifyListeners();
       return true;
     } catch (e) {
@@ -174,11 +124,9 @@ class DuelProvider with ChangeNotifier {
     }
   }
 
-  /// Refuse une invitation de duel
   Future<void> declineDuelInvitation(int invitationId) async {
     try {
-      await _apiService
-          .post('/duel/invitations/$invitationId/decline', {});
+      await _apiService.post('/duel/invitations/$invitationId/decline', {});
       _pendingInvitations.removeWhere((inv) => inv.id == invitationId);
       notifyListeners();
     } catch (e) {
@@ -194,41 +142,16 @@ class DuelProvider with ChangeNotifier {
     _isSearching = true;
     _messages.clear();
     notifyListeners();
-
     try {
       final userId = await _loadUserId();
-
       _socketService.connect();
-
-      _socketService.emit('search_duel', {
-        'difficulty': difficulty,
-        'userId': userId,
-      });
-
-      _socketService.on('duel_found', (data) {
-        print('🎮 Duel found: $data');
-        _handleDuelFound(data);
-      });
-
-      _socketService.on('opponent_progress', (data) {
-        _handleOpponentProgress(data);
-      });
-
-      _socketService.on('duel_finished', (data) {
-        _handleDuelFinished(data);
-      });
-
-      _socketService.on('opponent_disconnected', (data) {
-        _handleOpponentDisconnected();
-      });
-
-      _socketService.on('duel_message', (data) {
-        _handleDuelMessage(data);
-      });
-
-      _socketService.on('opponent_eliminated', (data) {
-        _handleOpponentEliminated();
-      });
+      _socketService.emit('search_duel', {'difficulty': difficulty, 'userId': userId});
+      _socketService.on('duel_found', (data) => _handleDuelFound(data));
+      _socketService.on('opponent_progress', (data) => _handleOpponentProgress(data));
+      _socketService.on('duel_finished', (data) => _handleDuelFinished(data));
+      _socketService.on('opponent_disconnected', (data) => _handleOpponentDisconnected());
+      _socketService.on('duel_message', (data) => _handleDuelMessage(data));
+      _socketService.on('opponent_eliminated', (data) => _handleOpponentEliminated());
     } catch (e) {
       _isSearching = false;
       notifyListeners();
@@ -238,31 +161,17 @@ class DuelProvider with ChangeNotifier {
   }
 
   void cancelSearch(String difficulty) {
-    final userId = _getCurrentUserId();
-
-    _socketService.emit('cancel_search', {
-      'difficulty': difficulty,
-      'userId': userId,
-    });
-
+    _socketService.emit('cancel_search', {'difficulty': difficulty, 'userId': _getCurrentUserId()});
     _isSearching = false;
     _socketService.disconnect();
     notifyListeners();
   }
 
-  /// ✅ Challenge un ami — appel réel au backend
   Future<void> challengeFriend(int friendId, String difficulty) async {
     try {
       _isSearching = true;
       notifyListeners();
-
-      final response = await _apiService.post('/duel/challenge', {
-        'friend_id': friendId,
-        'difficulty': difficulty,
-      });
-
-      // ✅ On ne lance PAS le duel immédiatement côté inviteur :
-      // il attend que l'ami accepte. On remet isSearching à false.
+      await _apiService.post('/duel/challenge', {'friend_id': friendId, 'difficulty': difficulty});
       _isSearching = false;
       notifyListeners();
     } catch (e) {
@@ -279,49 +188,36 @@ class DuelProvider with ChangeNotifier {
 
   void _handleDuelFound(Map<String, dynamic> data) {
     if (data.isEmpty) return;
-
     _currentDuel = DuelModel.fromJson(data);
-    _playerGrid =
-        _currentDuel!.grid.map((row) => List<int>.from(row)).toList();
-    _initialCells = List.generate(
-        9, (i) => List.generate(9, (j) => _currentDuel!.grid[i][j] != 0));
-    _errorCells =
-        List.generate(9, (i) => List.generate(9, (j) => false));
-
+    _playerGrid = _currentDuel!.grid.map((row) => List<int>.from(row)).toList();
+    _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentDuel!.grid[i][j] != 0));
+    _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
     _isSearching = false;
     _isDuelActive = true;
     _isEliminated = false;
     _elapsedSeconds = 0;
     _myMistakes = 0;
     _messages.clear();
-
     _startTimer();
     notifyListeners();
   }
 
   void _handleOpponentProgress(Map<String, dynamic> data) {
     if (_currentDuel == null) return;
-
     _currentDuel = _currentDuel!.copyWith(
       player2Progress: data['progress'],
       player2Mistakes: data['mistakes'],
     );
-
     notifyListeners();
   }
 
   void _handleDuelFinished(Map<String, dynamic> data) {
     _timer?.cancel();
-
     final winnerId = data['winner_id'];
-
     _currentDuel = _currentDuel!.copyWith(
-      winnerId: winnerId == 'player1'
-          ? _currentDuel!.player1Id
-          : _currentDuel!.player2Id,
+      winnerId: winnerId == 'player1' ? _currentDuel!.player1Id : _currentDuel!.player2Id,
       status: 'finished',
     );
-
     _isDuelActive = false;
     notifyListeners();
   }
@@ -329,12 +225,7 @@ class DuelProvider with ChangeNotifier {
   void _handleOpponentDisconnected() {
     _timer?.cancel();
     _isDuelActive = false;
-
-    _currentDuel = _currentDuel!.copyWith(
-      winnerId: _getCurrentUserId(),
-      status: 'finished',
-    );
-
+    _currentDuel = _currentDuel!.copyWith(winnerId: _getCurrentUserId(), status: 'finished');
     notifyListeners();
   }
 
@@ -344,26 +235,18 @@ class DuelProvider with ChangeNotifier {
       content: data['content'],
       timestamp: DateTime.now(),
     );
-
     _messages.add(message);
     _lastOpponentMessage = data['content'];
-
     Future.delayed(const Duration(seconds: 3), () {
       _lastOpponentMessage = null;
       notifyListeners();
     });
-
     notifyListeners();
   }
 
   void _handleOpponentEliminated() {
     _timer?.cancel();
-
-    _currentDuel = _currentDuel!.copyWith(
-      winnerId: _getCurrentUserId(),
-      status: 'finished',
-    );
-
+    _currentDuel = _currentDuel!.copyWith(winnerId: _getCurrentUserId(), status: 'finished');
     _isDuelActive = false;
     notifyListeners();
   }
@@ -382,18 +265,14 @@ class DuelProvider with ChangeNotifier {
 
   Future<void> setCellValue(int row, int col, int value) async {
     if (_initialCells[row][col] || !_isDuelActive || _isEliminated) return;
-
     _playerGrid[row][col] = value;
-
     if (value != 0 && value != _currentDuel!.solution[row][col]) {
       _errorCells[row][col] = true;
       _myMistakes++;
-
       if (_myMistakes >= 3) {
         await _eliminatePlayer();
         return;
       }
-
       Future.delayed(const Duration(seconds: 1), () {
         if (_errorCells.length > row && _errorCells[row].length > col) {
           _errorCells[row][col] = false;
@@ -405,38 +284,26 @@ class DuelProvider with ChangeNotifier {
         _errorCells[row][col] = false;
       }
     }
-
-    final progress = myProgress;
-
     _socketService.emit('update_progress', {
       'duel_id': _currentDuel!.id,
-      'progress': progress,
+      'progress': myProgress,
       'mistakes': _myMistakes,
     });
-
-    if (_checkCompletion()) {
-      await _completeDuel();
-    }
-
+    if (_checkCompletion()) await _completeDuel();
     notifyListeners();
   }
 
   void clearCell(int row, int col) {
     if (_initialCells[row][col] || !_isDuelActive || _isEliminated) return;
-
     _playerGrid[row][col] = 0;
     _errorCells[row][col] = false;
-
     notifyListeners();
   }
 
   bool _checkCompletion() {
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 9; j++) {
-        if (_playerGrid[i][j] == 0 ||
-            _playerGrid[i][j] != _currentDuel!.solution[i][j]) {
-          return false;
-        }
+        if (_playerGrid[i][j] == 0 || _playerGrid[i][j] != _currentDuel!.solution[i][j]) return false;
       }
     }
     return true;
@@ -445,24 +312,13 @@ class DuelProvider with ChangeNotifier {
   Future<void> _completeDuel() async {
     _timer?.cancel();
     _isDuelActive = false;
-
     try {
-      await _apiService.post('/duel/${_currentDuel!.id}/complete', {
-        'time_elapsed': _elapsedSeconds,
-      });
-
-      _socketService.emit('duel_completed', {
-        'duel_id': _currentDuel!.id,
-      });
-
-      _currentDuel = _currentDuel!.copyWith(
-        winnerId: _getCurrentUserId(),
-        status: 'finished',
-      );
+      await _apiService.post('/duel/${_currentDuel!.id}/complete', {'time_elapsed': _elapsedSeconds});
+      _socketService.emit('duel_completed', {'duel_id': _currentDuel!.id});
+      _currentDuel = _currentDuel!.copyWith(winnerId: _getCurrentUserId(), status: 'finished');
     } catch (e) {
       print('Error completing duel: $e');
     }
-
     notifyListeners();
   }
 
@@ -470,20 +326,11 @@ class DuelProvider with ChangeNotifier {
     _isEliminated = true;
     _isDuelActive = false;
     _timer?.cancel();
-
-    _socketService.emit('player_eliminated', {
-      'duel_id': _currentDuel!.id,
-    });
-
+    _socketService.emit('player_eliminated', {'duel_id': _currentDuel!.id});
     final opponentId = _currentDuel!.player1Id == _getCurrentUserId()
         ? _currentDuel!.player2Id
         : _currentDuel!.player1Id;
-
-    _currentDuel = _currentDuel!.copyWith(
-      winnerId: opponentId,
-      status: 'finished',
-    );
-
+    _currentDuel = _currentDuel!.copyWith(winnerId: opponentId, status: 'finished');
     notifyListeners();
   }
 
@@ -493,20 +340,12 @@ class DuelProvider with ChangeNotifier {
 
   void sendQuickMessage(String message) {
     if (!_isDuelActive || _currentDuel == null) return;
-
     _socketService.emit('duel_message', {
       'duel_id': _currentDuel!.id,
       'sender_id': _getCurrentUserId(),
       'content': message,
     });
-
-    final msg = DuelMessage(
-      senderId: _getCurrentUserId(),
-      content: message,
-      timestamp: DateTime.now(),
-    );
-
-    _messages.add(msg);
+    _messages.add(DuelMessage(senderId: _getCurrentUserId(), content: message, timestamp: DateTime.now()));
     notifyListeners();
   }
 
@@ -516,13 +355,9 @@ class DuelProvider with ChangeNotifier {
 
   Future<void> abandonDuel() async {
     _timer?.cancel();
-
     if (_currentDuel != null && _isDuelActive) {
-      _socketService.emit('abandon_duel', {
-        'duel_id': _currentDuel!.id,
-      });
+      _socketService.emit('abandon_duel', {'duel_id': _currentDuel!.id});
     }
-
     _socketService.disconnect();
     _resetState();
   }
@@ -539,7 +374,6 @@ class DuelProvider with ChangeNotifier {
     _isSearching = false;
     _messages.clear();
     _lastOpponentMessage = null;
-
     notifyListeners();
   }
 

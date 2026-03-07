@@ -4,7 +4,7 @@ import '../../providers/friends_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/duel_provider.dart';
 import '../../config/theme.dart';
-import '../../models/friend_model.dart';
+import '../../models/friend_model.dart'; 
 import '../../widgets/avatar_widget.dart';
 import 'friend_profile_screen.dart';
 import 'add_friend_screen.dart';
