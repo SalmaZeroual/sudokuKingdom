@@ -35,15 +35,29 @@ class _FriendsScreenState extends State<FriendsScreen>
 
       final duelProvider = Provider.of<DuelProvider>(context, listen: false);
       duelProvider.loadPendingDuelInvitations();
+      
+      // ✅ AJOUTÉ : Navigation automatique
+      duelProvider.setOnDuelAcceptedCallback(() {
+        if (mounted && duelProvider.isDuelActive) {
+          print('🎮 Navigation automatique vers le duel !');
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => DuelGameScreen()),
+          );
+        }
+      });
     });
   }
 
   @override
   void dispose() {
+    // ✅ AJOUTÉ : Nettoyer le callback
+    final duelProvider = Provider.of<DuelProvider>(context, listen: false);
+    duelProvider.setOnDuelAcceptedCallback(null);
+    
     _tabController.dispose();
     super.dispose();
   }
-
+  
   @override
   Widget build(BuildContext context) {
     final friendsProvider = Provider.of<FriendsProvider>(context);

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/duel_model.dart';
-import '../models/friend_model.dart'; // ✅ DuelInvitation vient d'ici
+import '../models/friend_model.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../config/constants.dart';
@@ -25,6 +25,8 @@ class DuelProvider with ChangeNotifier {
   String? _lastOpponentMessage;
 
   List<DuelInvitation> _pendingInvitations = [];
+  
+  VoidCallback? _onDuelAcceptedCallback; // ✅ AJOUTÉ
 
   final ApiService _apiService = ApiService();
   final SocketService _socketService = SocketService();
@@ -88,6 +90,11 @@ class DuelProvider with ChangeNotifier {
     return _currentUserId!;
   }
 
+  // ✅ NOUVEAU : Méthode pour définir le callback
+  void setOnDuelAcceptedCallback(VoidCallback? callback) {
+    _onDuelAcceptedCallback = callback;
+  }
+
   // ══════════════════════════════════════════════
   // INVITATIONS DE DUEL
   // ══════════════════════════════════════════════
@@ -96,19 +103,49 @@ class DuelProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await _apiService.get('/duel/invitations/pending');
+      final response = await _apiService.get('/duel/invitations');
       final List<dynamic> data = response is List
           ? response
           : (response['invitations'] ?? []);
       _pendingInvitations = data
           .map((item) => DuelInvitation.fromJson(item as Map<String, dynamic>))
           .toList();
+      print('✅ Loaded ${_pendingInvitations.length} duel invitations');
+      
+      _socketService.connect();
+      _socketService.on('duel_accepted', (data) => _handleDuelAccepted(data));
+      _socketService.on('new_duel_invitation', (data) => _handleNewInvitation(data));
+      
     } catch (e) {
-      print('Error loading duel invitations: $e');
+      print('❌ Error loading duel invitations: $e');
       _pendingInvitations = [];
     }
     _isLoading = false;
     notifyListeners();
+  }
+
+  // ✅ MODIFIÉ : Appeler le callback pour navigation automatique
+  void _handleDuelAccepted(Map<String, dynamic> data) {
+    final userId = _getCurrentUserId();
+    
+    if (data['player1_id'] == userId || data['player2_id'] == userId) {
+      print('✅ Duel accepted! Starting game...');
+      _handleDuelFound(data['duel']);
+      
+      // ✅ NOUVEAU : Appeler le callback pour naviguer
+      if (_onDuelAcceptedCallback != null) {
+        _onDuelAcceptedCallback!();
+      }
+    }
+  }
+
+  void _handleNewInvitation(Map<String, dynamic> data) {
+    final userId = _getCurrentUserId();
+    
+    if (data['to_user_id'] == userId) {
+      print('✅ New duel invitation received!');
+      loadPendingDuelInvitations();
+    }
   }
 
   Future<bool> acceptDuelInvitation(int invitationId) async {
@@ -172,6 +209,7 @@ class DuelProvider with ChangeNotifier {
       _isSearching = true;
       notifyListeners();
       await _apiService.post('/duel/challenge', {'friend_id': friendId, 'difficulty': difficulty});
+      print('✅ Invitation sent to friend $friendId');
       _isSearching = false;
       notifyListeners();
     } catch (e) {

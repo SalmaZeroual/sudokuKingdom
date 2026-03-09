@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../services/socket_service.dart'; // ✅ AJOUTÉ
 import '../config/constants.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -17,6 +18,7 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _token != null && _user != null;
   
   final ApiService apiService = ApiService();
+  final SocketService _socketService = SocketService(); // ✅ AJOUTÉ
   
   Future<void> checkAuthStatus() async {
     final prefs = await SharedPreferences.getInstance();
@@ -24,6 +26,12 @@ class AuthProvider with ChangeNotifier {
     
     if (_token != null) {
       await loadUser();
+      
+      // ✅ AJOUTÉ : Se reconnecter au socket si on était déjà connecté
+      if (_user != null) {
+        _socketService.connect();
+        _socketService.emit('user_online', _user!.id);
+      }
     }
     notifyListeners();
   }
@@ -78,6 +86,10 @@ class AuthProvider with ChangeNotifier {
       await prefs.setString(AppConstants.tokenKey, _token!);
       await prefs.setInt(AppConstants.userIdKey, _user!.id);
       
+      // ✅ AJOUTÉ : Se connecter au socket et signaler qu'on est en ligne
+      _socketService.connect();
+      _socketService.emit('user_online', _user!.id);
+      
       _isLoading = false;
       notifyListeners();
       return true;
@@ -107,6 +119,10 @@ class AuthProvider with ChangeNotifier {
       await prefs.setString(AppConstants.tokenKey, _token!);
       await prefs.setInt(AppConstants.userIdKey, _user!.id);
       
+      // ✅ AJOUTÉ : Se connecter au socket après vérification email
+      _socketService.connect();
+      _socketService.emit('user_online', _user!.id);
+      
       _isLoading = false;
       notifyListeners();
       
@@ -130,6 +146,12 @@ class AuthProvider with ChangeNotifier {
   }
   
   Future<void> logout() async {
+    // ✅ AJOUTÉ : Signaler qu'on est hors ligne avant de se déconnecter
+    if (_user != null) {
+      _socketService.emit('user_offline', _user!.id);
+    }
+    _socketService.disconnect();
+    
     _user = null;
     _token = null;
     
@@ -240,6 +262,7 @@ class AuthProvider with ChangeNotifier {
           wins: _user!.wins,
           streak: _user!.streak,
           league: _user!.league,
+          uniqueId: _user!.uniqueId, // ✅ AJOUTÉ pour garder l'ID unique
         );
       }
       
@@ -302,6 +325,7 @@ class AuthProvider with ChangeNotifier {
           wins: _user!.wins,
           streak: _user!.streak,
           league: _user!.league,
+          uniqueId: _user!.uniqueId, // ✅ AJOUTÉ pour garder l'ID unique
         );
       }
       
@@ -329,6 +353,12 @@ class AuthProvider with ChangeNotifier {
       await apiService.delete('/user/account', body: {
         'password': password,
       });
+      
+      // ✅ AJOUTÉ : Signaler qu'on est hors ligne avant suppression
+      if (_user != null) {
+        _socketService.emit('user_offline', _user!.id);
+      }
+      _socketService.disconnect();
       
       // Clear local data after successful deletion
       _user = null;
