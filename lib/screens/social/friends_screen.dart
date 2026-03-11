@@ -23,30 +23,44 @@ class _FriendsScreenState extends State<FriendsScreen>
   late TabController _tabController;
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+void initState() {
+  super.initState();
+  _tabController = TabController(length: 3, vsync: this);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final friendsProvider =
-          Provider.of<FriendsProvider>(context, listen: false);
-      friendsProvider.loadFriends();
-      friendsProvider.loadPendingRequests();
+  WidgetsBinding.instance.addPostFrameCallback((_) async { // ✅ AJOUTE async
+    final friendsProvider =
+        Provider.of<FriendsProvider>(context, listen: false);
+    friendsProvider.loadFriends();
+    friendsProvider.loadPendingRequests();
 
-      final duelProvider = Provider.of<DuelProvider>(context, listen: false);
-      duelProvider.loadPendingDuelInvitations();
-      
-      // ✅ AJOUTÉ : Navigation automatique
-      duelProvider.setOnDuelAcceptedCallback(() {
-        if (mounted && duelProvider.isDuelActive) {
-          print('🎮 Navigation automatique vers le duel !');
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => DuelGameScreen()),
-          );
-        }
-      });
+    final duelProvider = Provider.of<DuelProvider>(context, listen: false);
+    
+    // ✅ NOUVEAU : Charger le userId AVANT tout le reste
+    await duelProvider.loadUserId();
+    
+    // ✅ NOUVEAU : Écouter les événements socket
+    duelProvider.socketService.connect();
+    duelProvider.socketService.on('duel_accepted', (data) {
+      print('🔔 Socket event received: duel_accepted');
+      duelProvider.handleDuelAcceptedExternal(data);
     });
-  }
+    duelProvider.socketService.on('new_duel_invitation', (data) {
+      print('🔔 Socket event received: new_duel_invitation');
+      duelProvider.handleNewInvitationExternal(data);
+    });
+    
+    duelProvider.loadPendingDuelInvitations();
+    
+    duelProvider.setOnDuelAcceptedCallback(() {
+      if (mounted && duelProvider.isDuelActive) {
+        print('🎮 Navigation automatique vers le duel !');
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => DuelGameScreen()),
+        );
+      }
+    });
+  });
+}
 
   @override
   void dispose() {

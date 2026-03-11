@@ -26,10 +26,12 @@ class DuelProvider with ChangeNotifier {
 
   List<DuelInvitation> _pendingInvitations = [];
   
-  VoidCallback? _onDuelAcceptedCallback; // ✅ AJOUTÉ
+  VoidCallback? _onDuelAcceptedCallback;
 
   final ApiService _apiService = ApiService();
   final SocketService _socketService = SocketService();
+
+  SocketService get socketService => _socketService;
 
   // ── Getters ──────────────────────────────────────
   DuelModel? get currentDuel => _currentDuel;
@@ -84,15 +86,23 @@ class DuelProvider with ChangeNotifier {
   int _getCurrentUserId() => _currentUserId ?? 0;
   int? _currentUserId;
 
-  Future<int> _loadUserId() async {
+  Future<int> loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
     _currentUserId = prefs.getInt(AppConstants.userIdKey) ?? 0;
+    print('🔍 DEBUG: Loaded userId from SharedPreferences: $_currentUserId');
     return _currentUserId!;
   }
 
-  // ✅ NOUVEAU : Méthode pour définir le callback
   void setOnDuelAcceptedCallback(VoidCallback? callback) {
     _onDuelAcceptedCallback = callback;
+  }
+
+  void handleDuelAcceptedExternal(Map<String, dynamic> data) {
+    _handleDuelAccepted(data);
+  }
+
+  void handleNewInvitationExternal(Map<String, dynamic> data) {
+    _handleNewInvitation(data);
   }
 
   // ══════════════════════════════════════════════
@@ -112,10 +122,6 @@ class DuelProvider with ChangeNotifier {
           .toList();
       print('✅ Loaded ${_pendingInvitations.length} duel invitations');
       
-      _socketService.connect();
-      _socketService.on('duel_accepted', (data) => _handleDuelAccepted(data));
-      _socketService.on('new_duel_invitation', (data) => _handleNewInvitation(data));
-      
     } catch (e) {
       print('❌ Error loading duel invitations: $e');
       _pendingInvitations = [];
@@ -124,39 +130,59 @@ class DuelProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // ✅ MODIFIÉ : Appeler le callback pour navigation automatique
   void _handleDuelAccepted(Map<String, dynamic> data) {
+    print('🔍 DEBUG: Received duel_accepted data: $data');
+    print('🔍 DEBUG: data type: ${data.runtimeType}');
+    print('🔍 DEBUG: data keys: ${data.keys}');
+    
     final userId = _getCurrentUserId();
+    print('🔍 DEBUG: Current userId: $userId');
+    print('🔍 DEBUG: data[\'player1_id\']: ${data['player1_id']}');
+    print('🔍 DEBUG: data[\'player2_id\']: ${data['player2_id']}');
+    print('🔍 DEBUG: data[\'duel\']: ${data['duel']}');
     
     if (data['player1_id'] == userId || data['player2_id'] == userId) {
       print('✅ Duel accepted! Starting game...');
+      print('🔍 DEBUG: About to call _handleDuelFound with: ${data['duel']}');
       _handleDuelFound(data['duel']);
       
-      // ✅ NOUVEAU : Appeler le callback pour naviguer
       if (_onDuelAcceptedCallback != null) {
+        print('🔍 DEBUG: Calling navigation callback');
         _onDuelAcceptedCallback!();
+      } else {
+        print('⚠️ WARNING: No navigation callback set!');
       }
+    } else {
+      print('❌ User ID mismatch - ignoring event');
+      print('   Expected: $userId');
+      print('   Got player1_id: ${data['player1_id']}, player2_id: ${data['player2_id']}');
     }
   }
 
   void _handleNewInvitation(Map<String, dynamic> data) {
+    print('🔍 DEBUG: Received new_duel_invitation: $data');
     final userId = _getCurrentUserId();
     
     if (data['to_user_id'] == userId) {
-      print('✅ New duel invitation received!');
+      print('✅ New duel invitation received! Reloading...');
       loadPendingDuelInvitations();
+    } else {
+      print('❌ Invitation not for me (my ID: $userId, invitation for: ${data['to_user_id']})');
     }
   }
 
   Future<bool> acceptDuelInvitation(int invitationId) async {
     try {
+      print('📤 Accepting invitation $invitationId...');
       final response = await _apiService.post('/duel/invitations/$invitationId/accept', {});
+      print('📥 Response from accept: $response');
+      
       _pendingInvitations.removeWhere((inv) => inv.id == invitationId);
       _handleDuelFound(response is Map<String, dynamic> ? response : {});
       notifyListeners();
       return true;
     } catch (e) {
-      print('Error accepting duel invitation: $e');
+      print('❌ Error accepting duel invitation: $e');
       return false;
     }
   }
@@ -167,7 +193,7 @@ class DuelProvider with ChangeNotifier {
       _pendingInvitations.removeWhere((inv) => inv.id == invitationId);
       notifyListeners();
     } catch (e) {
-      print('Error declining duel invitation: $e');
+      print('❌ Error declining duel invitation: $e');
     }
   }
 
@@ -180,7 +206,7 @@ class DuelProvider with ChangeNotifier {
     _messages.clear();
     notifyListeners();
     try {
-      final userId = await _loadUserId();
+      final userId = await loadUserId();
       _socketService.connect();
       _socketService.emit('search_duel', {'difficulty': difficulty, 'userId': userId});
       _socketService.on('duel_found', (data) => _handleDuelFound(data));
@@ -225,19 +251,33 @@ class DuelProvider with ChangeNotifier {
   // ══════════════════════════════════════════════
 
   void _handleDuelFound(Map<String, dynamic> data) {
-    if (data.isEmpty) return;
-    _currentDuel = DuelModel.fromJson(data);
-    _playerGrid = _currentDuel!.grid.map((row) => List<int>.from(row)).toList();
-    _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentDuel!.grid[i][j] != 0));
-    _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
-    _isSearching = false;
-    _isDuelActive = true;
-    _isEliminated = false;
-    _elapsedSeconds = 0;
-    _myMistakes = 0;
-    _messages.clear();
-    _startTimer();
-    notifyListeners();
+    print('🔍 DEBUG: _handleDuelFound called with: $data');
+    if (data.isEmpty) {
+      print('⚠️ WARNING: Empty data in _handleDuelFound');
+      return;
+    }
+    
+    try {
+      _currentDuel = DuelModel.fromJson(data);
+      print('✅ Duel model created: ${_currentDuel!.id}');
+      
+      _playerGrid = _currentDuel!.grid.map((row) => List<int>.from(row)).toList();
+      _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentDuel!.grid[i][j] != 0));
+      _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
+      _isSearching = false;
+      _isDuelActive = true;
+      _isEliminated = false;
+      _elapsedSeconds = 0;
+      _myMistakes = 0;
+      _messages.clear();
+      _startTimer();
+      
+      print('✅ Duel state initialized, isDuelActive: $_isDuelActive');
+      notifyListeners();
+    } catch (e) {
+      print('❌ Error in _handleDuelFound: $e');
+      print('   Data was: $data');
+    }
   }
 
   void _handleOpponentProgress(Map<String, dynamic> data) {
