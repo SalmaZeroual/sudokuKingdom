@@ -5,7 +5,7 @@ import '../providers/game_provider.dart';
 import '../config/theme.dart';
 import '../widgets/mode_card.dart';
 import '../widgets/stat_card.dart';
-import '../widgets/avatar_widget.dart'; // ✅ AJOUTÉ
+import '../widgets/avatar_widget.dart'; 
 import 'modes/classic_mode_screen.dart';
 import 'modes/duel_mode_screen.dart';
 import 'modes/tournament_mode_screen.dart';

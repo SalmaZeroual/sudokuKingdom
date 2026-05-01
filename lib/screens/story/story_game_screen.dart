@@ -38,6 +38,9 @@ class _StoryGameScreenState extends State<StoryGameScreen>
   // Combo system
   int _combo = 0;
   int _comboMax = 0;
+
+  // ✅ NOUVEAU: Indices
+  int _hintsRemaining = 3;
   
   // Character messages
   String? _characterMessage;
@@ -238,6 +241,80 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       _soundManager.playSound(SoundEffect.wrongCell);
     }
   }
+
+  // ✅ NOUVEAU: Utiliser un indice
+  void _useHint(BuildContext context) {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+    if (_hintsRemaining > 0) {
+      // Trouver la première case vide et la remplir
+      bool hintUsed = false;
+      for (int i = 0; i < 9 && !hintUsed; i++) {
+        for (int j = 0; j < 9 && !hintUsed; j++) {
+          if (gameProvider.playerGrid[i][j] == 0 &&
+              !gameProvider.initialCells[i][j]) {
+            final correctValue = widget.chapter.solution![i][j];
+            gameProvider.setCellValue(i, j, correctValue);
+            setState(() {
+              _hintsRemaining--;
+            });
+            hintUsed = true;
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('💡 Indice utilisé ! Il en reste $_hintsRemaining'),
+                backgroundColor: widget.kingdomColor,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+    } else {
+      // Plus d'indices → proposer pub
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.lightbulb, color: AppColors.yellow, size: 28),
+              const SizedBox(width: 12),
+              const Text('Plus d\'indices !'),
+            ],
+          ),
+          content: const Text(
+            'Vous avez utilisé vos 3 indices.\nRegardez une publicité pour obtenir un indice supplémentaire.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _hintsRemaining = 1;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('📺 Pub regardée - 1 indice accordé !'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.play_arrow, size: 18),
+              label: const Text('Regarder une pub'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: widget.kingdomColor,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
   
   String get _formattedTime {
     final minutes = _elapsedTime ~/ 60;
@@ -382,11 +459,17 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                               value: '$_combo',
                               color: _combo >= 3 ? AppColors.orange : widget.kingdomColor,
                             ),
-                            _GameStat(
-                              icon: Icons.flag,
-                              label: widget.chapter.difficultyLabel,
-                              value: '',
-                              color: widget.kingdomColor,
+                            // ✅ NOUVEAU: Indices cliquable
+                            GestureDetector(
+                              onTap: () => _useHint(context),
+                              child: _GameStat(
+                                icon: Icons.lightbulb_outline,
+                                label: 'Indices',
+                                value: '$_hintsRemaining',
+                                color: _hintsRemaining > 0
+                                    ? AppColors.yellow
+                                    : AppColors.gray500,
+                              ),
                             ),
                           ],
                         ),

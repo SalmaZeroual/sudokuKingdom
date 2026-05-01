@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
+import '../services/account_storage_service.dart'; // ✅ AJOUTÉ
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../widgets/avatar_widget.dart';
@@ -21,13 +22,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _soundEnabled = true;
   bool _vibrationsEnabled = true;
   bool _notificationsEnabled = true;
-  
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
   }
-  
+
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -36,17 +37,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
     });
   }
-  
+
   Future<void> _saveSetting(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
+  }
+
+  // ✅ AJOUTÉ : Logout intelligent avec dialog "garder le mot de passe"
+  Future<void> _handleLogout(BuildContext context) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.user;
+    if (user == null) return;
+
+    // 1. Confirmer la déconnexion
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Déconnexion'),
+        content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.red),
+            child: const Text('Déconnecter'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout != true || !context.mounted) return;
+
+    // 2. Vérifier si le mot de passe est déjà sauvegardé pour ce compte
+    final accounts = await authProvider.getSavedAccounts();
+    final savedAccount = accounts.firstWhere(
+      (a) => a.email == user.email,
+      orElse: () => SavedAccount(
+        userId: 0, email: '', username: '', avatar: '', lastLogin: DateTime.now(),
+      ),
+    );
+
+    bool keepPassword = savedAccount.savedPassword != null &&
+        savedAccount.savedPassword != '__ask_on_next_login__';
+
+    // 3. Si le mot de passe n'a jamais été mémorisé → demander (une seule fois)
+    final neverAsked = savedAccount.email.isNotEmpty &&
+        savedAccount.savedPassword == null;
+
+    if (neverAsked && context.mounted) {
+      final choice = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Mémoriser le mot de passe ?',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'Voulez-vous que Sudoku Kingdom mémorise votre mot de passe pour vous reconnecter plus rapidement la prochaine fois ?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Non merci', style: TextStyle(color: Colors.grey[600])),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Mémoriser'),
+            ),
+          ],
+        ),
+      );
+
+      if (choice == null || !context.mounted) return;
+      keepPassword = choice;
+
+      // Si oui → marquer pour que le prochain login() sauvegarde le mdp
+      if (keepPassword) {
+        await authProvider.setSavedPassword(user.email, '__ask_on_next_login__');
+      }
+    }
+
+    await authProvider.logout(keepPassword: keepPassword);
+
+    if (context.mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Paramètres'),
@@ -59,8 +151,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // ==========================================
           _buildSectionHeader('PROFIL'),
           const SizedBox(height: 8),
-          
-          // ✅ Avatar + bouton éditer
+
           ListTile(
             leading: AvatarWidget(
               avatarId: user?.avatar,
@@ -82,14 +173,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          
+
           ListTile(
             leading: const Icon(Icons.person_outline, color: AppColors.green),
             title: const Text('Modifier le pseudo'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () => _showEditProfileDialog(context),
           ),
-          
+
           ListTile(
             leading: const Icon(Icons.lock_outline, color: AppColors.orange),
             title: const Text('Changer le mot de passe'),
@@ -97,7 +188,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showChangePasswordDialog(context),
           ),
 
-          // ✅ Supprimer mon compte
+          // ✅ AJOUTÉ : Option pour gérer le mot de passe mémorisé
+          FutureBuilder<List<SavedAccount>>(
+            future: authProvider.getSavedAccounts(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData || user == null) return const SizedBox();
+              final saved = snapshot.data!.firstWhere(
+                (a) => a.email == user.email,
+                orElse: () => SavedAccount(
+                  userId: 0, email: '', username: '', avatar: '', lastLogin: DateTime.now(),
+                ),
+              );
+              final hasRealPassword = saved.savedPassword != null &&
+                  saved.savedPassword != '__ask_on_next_login__';
+
+              return ListTile(
+                leading: Icon(
+                  hasRealPassword ? Icons.key : Icons.key_off_outlined,
+                  color: hasRealPassword ? AppColors.green : AppColors.gray500,
+                ),
+                title: Text(
+                  hasRealPassword
+                      ? 'Mot de passe mémorisé'
+                      : 'Mot de passe non mémorisé',
+                ),
+                subtitle: Text(
+                  hasRealPassword
+                      ? 'Connexion rapide activée'
+                      : 'Vous entrez votre mdp à chaque connexion',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: Switch(
+                  value: hasRealPassword,
+                  activeColor: AppColors.green,
+                  onChanged: (val) async {
+                    if (!val) {
+                      // Désactiver → supprimer le mdp sauvegardé
+                      await authProvider.setSavedPassword(user.email, null);
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('✅ Mot de passe supprimé de la mémoire'),
+                          backgroundColor: AppColors.green,
+                        ),
+                      );
+                    }
+                    // Activer → se fera automatiquement au prochain login
+                  },
+                ),
+              );
+            },
+          ),
+
           ListTile(
             leading: const Icon(Icons.delete_forever, color: AppColors.red),
             title: const Text(
@@ -107,15 +249,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.red),
             onTap: () => _showDeleteAccountDialog(context),
           ),
-          
+
           const Divider(height: 32),
-          
+
           // ==========================================
           // SECTION PRÉFÉRENCES
           // ==========================================
           _buildSectionHeader('PRÉFÉRENCES'),
           const SizedBox(height: 8),
-          
+
           SwitchListTile(
             secondary: const Icon(Icons.volume_up, color: AppColors.blue),
             title: const Text('Sons'),
@@ -126,7 +268,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _saveSetting('sound_enabled', value);
             },
           ),
-          
+
           SwitchListTile(
             secondary: const Icon(Icons.vibration, color: AppColors.purple),
             title: const Text('Vibrations'),
@@ -137,7 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _saveSetting('vibrations_enabled', value);
             },
           ),
-          
+
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined, color: AppColors.yellow),
             title: const Text('Notifications'),
@@ -148,15 +290,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _saveSetting('notifications_enabled', value);
             },
           ),
-          
+
           const Divider(height: 32),
-          
+
           // ==========================================
           // SECTION AIDE
           // ==========================================
           _buildSectionHeader('AIDE'),
           const SizedBox(height: 8),
-          
+
           ListTile(
             leading: const Icon(Icons.help_outline, color: AppColors.blue),
             title: const Text('Revoir le tutoriel'),
@@ -165,7 +307,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setBool('tutorial_completed', false);
-              
+
               if (context.mounted) {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const TutorialSettingsScreen()),
@@ -173,7 +315,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             },
           ),
-          
+
           ListTile(
             leading: const Icon(Icons.info_outline, color: AppColors.green),
             title: const Text('Comment jouer'),
@@ -181,23 +323,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () => _showHowToPlayDialog(context),
           ),
-          
+
           ListTile(
             leading: const Icon(Icons.bug_report_outlined, color: AppColors.red),
             title: const Text('Signaler un bug'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () => _showReportBugDialog(context),
           ),
-          
+
           const Divider(height: 32),
-          
+
           // ==========================================
           // SECTION NOS AUTRES JEUX
           // ==========================================
           _buildSectionHeader('NOS AUTRES JEUX'),
           const SizedBox(height: 8),
-          
-          // ✅ CORRIGÉ : Chess Kingdom "Bientôt" sans onTap
+
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(8),
@@ -227,7 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          
+
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(8),
@@ -257,7 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          
+
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(8),
@@ -287,27 +428,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          
+
           const Divider(height: 32),
-          
+
           // ==========================================
           // SECTION À PROPOS
           // ==========================================
           _buildSectionHeader('À PROPOS'),
           const SizedBox(height: 8),
-          
+
           ListTile(
             leading: const Icon(Icons.castle, color: AppColors.purple),
             title: const Text('Version'),
             subtitle: const Text('1.0.0 (Build 1)'),
           ),
-          
+
           ListTile(
             leading: const Icon(Icons.code, color: AppColors.blue),
             title: const Text('Développé par'),
             subtitle: const Text('Sudoku Kingdom Team'),
           ),
-          
+
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined, color: AppColors.green),
             title: const Text('Politique de confidentialité'),
@@ -318,7 +459,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          
+
           ListTile(
             leading: const Icon(Icons.description_outlined, color: AppColors.orange),
             title: const Text('Conditions d\'utilisation'),
@@ -329,13 +470,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          
+
           const SizedBox(height: 32),
-          
-          // Bouton Déconnexion
+
+          // ✅ MODIFIÉ : utilise _handleLogout
           Center(
             child: TextButton.icon(
-              onPressed: () => _showLogoutDialog(context),
+              onPressed: () => _handleLogout(context),
               icon: const Icon(Icons.logout, color: AppColors.red),
               label: const Text(
                 'Se déconnecter',
@@ -343,13 +484,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 32),
         ],
       ),
     );
   }
-  
+
   Widget _buildSectionHeader(String title) {
     return Text(
       title,
@@ -361,16 +502,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   // ==========================================
-  // DIALOGUES
+  // DIALOGUES (inchangés)
   // ==========================================
-  
+
   void _showEditProfileDialog(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUsername = authProvider.user?.username ?? '';
     final controller = TextEditingController(text: currentUsername);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -389,10 +530,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             Text(
               'Email: ${authProvider.user?.email}',
-              style: TextStyle(
-                color: AppColors.gray500,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: AppColors.gray500, fontSize: 12),
             ),
           ],
         ),
@@ -404,52 +542,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               final newUsername = controller.text.trim();
-              
+
               if (newUsername.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('❌ Le nom ne peut pas être vide'),
-                    backgroundColor: AppColors.red,
-                  ),
-                );
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('❌ Le nom ne peut pas être vide'),
+                  backgroundColor: AppColors.red,
+                ));
                 return;
               }
-              
               if (newUsername.length < 3) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('❌ Le nom doit contenir au moins 3 caractères'),
-                    backgroundColor: AppColors.red,
-                  ),
-                );
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('❌ Le nom doit contenir au moins 3 caractères'),
+                  backgroundColor: AppColors.red,
+                ));
                 return;
               }
-              
               if (newUsername == currentUsername) {
                 Navigator.of(context).pop();
                 return;
               }
-              
+
               showDialog(
                 context: context,
                 barrierDismissible: false,
                 builder: (context) => const Center(child: CircularProgressIndicator()),
               );
-              
+
               final success = await authProvider.updateUsername(newUsername);
-              
+
               if (context.mounted) Navigator.of(context).pop();
               if (context.mounted) Navigator.of(context).pop();
-              
+
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(success
-                        ? '✅ Profil mis à jour'
-                        : '❌ ${authProvider.errorMessage ?? "Erreur lors de la mise à jour"}'),
-                    backgroundColor: success ? AppColors.green : AppColors.red,
-                  ),
-                );
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(success
+                      ? '✅ Profil mis à jour'
+                      : '❌ ${authProvider.errorMessage ?? "Erreur lors de la mise à jour"}'),
+                  backgroundColor: success ? AppColors.green : AppColors.red,
+                ));
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.blue),
@@ -459,7 +589,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showChangePasswordDialog(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final oldPasswordController = TextEditingController();
@@ -468,7 +598,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool obscureOld = true;
     bool obscureNew = true;
     bool obscureConfirm = true;
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -532,7 +662,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 final oldPassword = oldPasswordController.text;
                 final newPassword = newPasswordController.text;
                 final confirmPassword = confirmPasswordController.text;
-                
+
                 if (oldPassword.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                     content: Text('❌ Veuillez entrer votre ancien mot de passe'),
@@ -568,18 +698,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ));
                   return;
                 }
-                
+
                 showDialog(
                   context: context,
                   barrierDismissible: false,
                   builder: (context) => const Center(child: CircularProgressIndicator()),
                 );
-                
+
                 final success = await authProvider.changePassword(oldPassword, newPassword);
-                
+
                 if (context.mounted) Navigator.of(context).pop();
                 if (context.mounted) Navigator.of(context).pop();
-                
+
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     content: Text(success
@@ -597,7 +727,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showDeleteAccountDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -607,10 +737,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Icon(Icons.warning_amber_rounded, color: AppColors.red, size: 28),
             SizedBox(width: 8),
             Expanded(
-              child: Text(
-                'Supprimer mon compte',
-                style: TextStyle(fontSize: 17),
-              ),
+              child: Text('Supprimer mon compte', style: TextStyle(fontSize: 17)),
             ),
           ],
         ),
@@ -654,10 +781,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _showDeleteAccountPasswordDialog(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
-            child: const Text(
-              'Oui, continuer',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('Oui, continuer', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -689,11 +813,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   labelText: 'Mot de passe',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      obscurePassword ? Icons.visibility_off : Icons.visibility,
-                    ),
-                    onPressed: () =>
-                        setState(() => obscurePassword = !obscurePassword),
+                    icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => obscurePassword = !obscurePassword),
                   ),
                   border: const OutlineInputBorder(),
                   focusedBorder: const OutlineInputBorder(
@@ -711,22 +832,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ElevatedButton(
               onPressed: () async {
                 final password = passwordController.text;
-
                 if (password.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ Veuillez entrer votre mot de passe'),
-                      backgroundColor: AppColors.red,
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('❌ Veuillez entrer votre mot de passe'),
+                    backgroundColor: AppColors.red,
+                  ));
                   return;
                 }
 
                 showDialog(
                   context: context,
                   barrierDismissible: false,
-                  builder: (context) =>
-                      const Center(child: CircularProgressIndicator()),
+                  builder: (context) => const Center(child: CircularProgressIndicator()),
                 );
 
                 final success = await authProvider.deleteAccount(password);
@@ -737,36 +854,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (context.mounted) {
                   if (success) {
                     Navigator.of(context).popUntil((route) => route.isFirst);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('✅ Votre compte a été supprimé'),
-                        backgroundColor: AppColors.gray700,
-                      ),
-                    );
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('✅ Votre compte a été supprimé'),
+                      backgroundColor: AppColors.gray700,
+                    ));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          '❌ ${authProvider.errorMessage ?? "Mot de passe incorrect ou erreur serveur"}',
-                        ),
-                        backgroundColor: AppColors.red,
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                        '❌ ${authProvider.errorMessage ?? "Mot de passe incorrect ou erreur serveur"}',
                       ),
-                    );
+                      backgroundColor: AppColors.red,
+                    ));
                   }
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
-              child: const Text(
-                'Supprimer définitivement',
-                style: TextStyle(color: Colors.white),
-              ),
+              child: const Text('Supprimer définitivement', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
       ),
     );
   }
-  
+
   void _showHowToPlayDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -777,19 +887,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '🎯 Règles du Sudoku :',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
+              Text('🎯 Règles du Sudoku :', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 12),
               Text('• Chaque ligne doit contenir les chiffres de 1 à 9'),
               Text('• Chaque colonne doit contenir les chiffres de 1 à 9'),
               Text('• Chaque bloc 3x3 doit contenir les chiffres de 1 à 9'),
               SizedBox(height: 16),
-              Text(
-                '💡 Astuces :',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
+              Text('💡 Astuces :', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 12),
               Text('• Utilisez le mode notes pour marquer les possibilités'),
               Text('• Les cases initiales ne peuvent pas être modifiées'),
@@ -808,10 +912,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showReportBugDialog(BuildContext context) {
     final controller = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -839,56 +943,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               final description = controller.text.trim();
-              
               if (description.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('❌ Veuillez décrire le problème'),
-                    backgroundColor: AppColors.red,
-                  ),
-                );
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('❌ Veuillez décrire le problème'),
+                  backgroundColor: AppColors.red,
+                ));
                 return;
               }
-              
+
               Navigator.of(context).pop();
-              
               showDialog(
                 context: context,
                 barrierDismissible: false,
-                builder: (context) => const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                builder: (context) => const Center(child: CircularProgressIndicator()),
               );
-              
+
               try {
-                // ✅ Le middleware authenticate récupère automatiquement le user
-                final response = await ApiService().post(
-                  '/support/report-bug',
-                  {'description': description},
-                );
-                
+                await ApiService().post('/support/report-bug', {'description': description});
                 if (context.mounted) {
                   Navigator.of(context).pop();
-                  
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Bug signalé avec succès ! Merci pour votre retour.'),
-                      backgroundColor: AppColors.green,
-                      duration: Duration(seconds: 3),
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('✅ Bug signalé avec succès ! Merci pour votre retour.'),
+                    backgroundColor: AppColors.green,
+                    duration: Duration(seconds: 3),
+                  ));
                 }
               } catch (e) {
                 if (context.mounted) {
                   Navigator.of(context).pop();
-                  
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('❌ Erreur : ${e.toString()}'),
-                      backgroundColor: AppColors.red,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('❌ Erreur : ${e.toString()}'),
+                    backgroundColor: AppColors.red,
+                    duration: const Duration(seconds: 3),
+                  ));
                 }
               }
             },
@@ -897,34 +984,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               foregroundColor: Colors.white,
             ),
             child: const Text('Envoyer'),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Déconnexion'),
-        content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final authProvider = Provider.of<AuthProvider>(context, listen: false);
-              await authProvider.logout();
-              
-              if (context.mounted) {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: AppColors.red),
-            child: const Text('Déconnexer'),
           ),
         ],
       ),

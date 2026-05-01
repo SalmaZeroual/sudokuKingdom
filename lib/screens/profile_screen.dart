@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/account_storage_service.dart'; // ✅ AJOUTÉ
 import '../config/theme.dart';
 import '../widgets/avatar_widget.dart';
 import 'avatar_selection_screen.dart';
@@ -10,50 +11,116 @@ import 'settings_screen.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
 
+  // ✅ AJOUTÉ : Logout intelligent avec dialog "garder le mot de passe"
+  Future<void> _handleLogout(BuildContext context) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.user;
+    if (user == null) return;
+
+    // 1. Confirmer la déconnexion
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Déconnexion'),
+        content: const Text('Voulez-vous vraiment vous déconnecter ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.red),
+            child: const Text('Déconnexion'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout != true || !context.mounted) return;
+
+    // 2. Vérifier si le mot de passe est déjà sauvegardé pour ce compte
+    final accounts = await authProvider.getSavedAccounts();
+    final savedAccount = accounts.firstWhere(
+      (a) => a.email == user.email,
+      orElse: () => SavedAccount(
+        userId: 0, email: '', username: '', avatar: '', lastLogin: DateTime.now(),
+      ),
+    );
+
+    bool keepPassword = savedAccount.savedPassword != null;
+
+    // 3. Si le mot de passe n'a jamais été mémorisé → demander
+    if (!keepPassword && savedAccount.email.isNotEmpty && context.mounted) {
+      final choice = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Mémoriser le mot de passe ?',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'Voulez-vous que Sudoku Kingdom mémorise votre mot de passe pour vous reconnecter plus rapidement la prochaine fois ?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Non merci', style: TextStyle(color: Colors.grey[600])),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Mémoriser'),
+            ),
+          ],
+        ),
+      );
+
+      if (choice == null || !context.mounted) return;
+      keepPassword = choice;
+
+      // Note: si choice == true mais qu'on n'a pas le mot de passe en clair ici,
+      // on met un flag pour que le login_screen demande à la prochaine connexion.
+      // Le mot de passe sera sauvegardé lors du prochain login().
+      if (keepPassword) {
+        await authProvider.setSavedPassword(user.email, '__ask_on_next_login__');
+      }
+    }
+
+    await authProvider.logout(keepPassword: keepPassword);
+
+    if (context.mounted) {
+      Navigator.of(context).pushReplacementNamed('/login');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profil'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () async {
+            onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
             },
           ),
+          // ✅ MODIFIÉ : utilise _handleLogout au lieu de authProvider.logout() direct
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final shouldLogout = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Déconnexion'),
-                  content: const Text('Voulez-vous vraiment vous déconnecter ?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('Annuler'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      style: TextButton.styleFrom(foregroundColor: AppColors.red),
-                      child: const Text('Déconnexion'),
-                    ),
-                  ],
-                ),
-              );
-              
-              if (shouldLogout == true && context.mounted) {
-                await authProvider.logout();
-                Navigator.of(context).pushReplacementNamed('/login');
-              }
-            },
+            onPressed: () => _handleLogout(context),
           ),
         ],
       ),
@@ -61,7 +128,6 @@ class ProfileScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // ✅ Avatar avec bouton d'édition
             AvatarWidget(
               avatarId: user?.avatar,
               size: 120,
@@ -76,20 +142,18 @@ class ProfileScreen extends StatelessWidget {
                 );
               },
             ),
-            
+
             const SizedBox(height: 16),
-            
-            // Username
+
             Text(
               user?.username ?? 'Joueur',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
-            
+
             const SizedBox(height: 8),
-            
-            // ✅ CORRIGÉ : Affichage de l'ID unique avec bouton copier
+
             if (user?.uniqueId != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -132,10 +196,9 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
-            
+
             const SizedBox(height: 16),
-            
-            // Rank
+
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
@@ -151,10 +214,9 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 32),
-            
-            // Stats Cards
+
             Row(
               children: [
                 Expanded(
@@ -176,9 +238,9 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 12),
-            
+
             Row(
               children: [
                 Expanded(
@@ -200,10 +262,9 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 32),
-            
-            // ✅ Carte d'information avec instructions
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -240,10 +301,9 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
-            // Email
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -276,7 +336,7 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String label;
   final Color color;
-  
+
   const _StatCard({
     required this.icon,
     required this.value,
@@ -308,10 +368,7 @@ class _StatCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.gray600,
-            ),
+            style: TextStyle(fontSize: 12, color: AppColors.gray600),
           ),
         ],
       ),

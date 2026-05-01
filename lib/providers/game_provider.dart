@@ -21,8 +21,11 @@ class GameProvider with ChangeNotifier {
   bool _isNoteMode = false;
   bool _isPaused = false;
   
-  // ✅ NOUVEAU: Game Over state
+  // ✅ Game Over state
   bool _isGameOver = false;
+
+  // ✅ NOUVEAU: Indices
+  int _hintsRemaining = 3;
   
   List<BoosterModel> _boosters = [];
   String? _selectedBooster;
@@ -39,9 +42,13 @@ class GameProvider with ChangeNotifier {
   int get mistakes => _mistakes;
   bool get isLoading => _isLoading;
   bool get isNoteMode => _isNoteMode;
-  bool get isGameOver => _isGameOver; // ✅ NOUVEAU
+  bool get isGameOver => _isGameOver; 
   List<BoosterModel> get boosters => _boosters;
   String? get selectedBooster => _selectedBooster;
+  String get difficulty => _currentGame?.difficulty ?? 'moyen';
+  // ✅ NOUVEAU: Getter indices
+  int get hintsRemaining => _hintsRemaining;
+
   
   bool get isCompleted {
     for (int i = 0; i < 9; i++) {
@@ -94,7 +101,8 @@ class GameProvider with ChangeNotifier {
     _mistakes = 0;
     _isNoteMode = false;
     _isPaused = false;
-    _isGameOver = false; // ✅ NOUVEAU
+    _isGameOver = false;
+    _hintsRemaining = 3; // ✅ NOUVEAU
     
     print('✅ Story game initialized! Grid: ${_playerGrid[0]}');
     notifyListeners();
@@ -155,7 +163,7 @@ class GameProvider with ChangeNotifier {
         _elapsedSeconds = _currentGame!.timeElapsed;
         _mistakes = _currentGame!.mistakes;
         _isCompleted = false;
-        _isGameOver = false; // ✅ NOUVEAU
+        _isGameOver = false;
         
         await loadBoosters();
         
@@ -195,7 +203,8 @@ class GameProvider with ChangeNotifier {
       _mistakes = 0;
       _isCompleted = false;
       _isNoteMode = false;
-      _isGameOver = false; // ✅ NOUVEAU
+      _isGameOver = false;
+      _hintsRemaining = 3; // ✅ NOUVEAU
       
       _startTimer();
       _startAutoSave();
@@ -266,7 +275,7 @@ class GameProvider with ChangeNotifier {
   }
   
   Future<void> setCellValue(int row, int col, int value) async {
-    if (_initialCells[row][col] || _isCompleted || _isGameOver) return; // ✅ Bloquer si game over
+    if (_initialCells[row][col] || _isCompleted || _isGameOver) return;
     
     if (_isNoteMode) {
       if (_notes[row][col].contains(value)) {
@@ -286,10 +295,9 @@ class GameProvider with ChangeNotifier {
         _errorCells[row][col] = true;
         _mistakes++;
         
-        // ✅ NOUVEAU: Vérifier si 3 erreurs atteintes
         if (_mistakes >= 3) {
           _triggerGameOver();
-          return; // Arrêter l'exécution
+          return;
         }
         
         Future.delayed(const Duration(seconds: 1), () {
@@ -312,7 +320,6 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
   
-  // ✅ NOUVEAU: Fonction Game Over
   void _triggerGameOver() {
     _isGameOver = true;
     _timer?.cancel();
@@ -323,10 +330,9 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
   
-  // ✅ NOUVEAU: Continuer avec publicité (pour plus tard)
   void continueWithAd() {
     _isGameOver = false;
-    _mistakes = 2; // Réinitialiser à 2 erreurs (1 chance restante)
+    _mistakes = 2;
     
     _startTimer();
     _startAutoSave();
@@ -335,9 +341,39 @@ class GameProvider with ChangeNotifier {
     
     notifyListeners();
   }
+
+  // ✅ NOUVEAU: Utiliser un indice
+  bool useHint() {
+    if (_hintsRemaining <= 0) return false;
+
+    for (int i = 0; i < 9; i++) {
+      for (int j = 0; j < 9; j++) {
+        if (_playerGrid[i][j] == 0 && !_initialCells[i][j]) {
+          int correctValue = _solutionGrid.isNotEmpty
+              ? _solutionGrid[i][j]
+              : _currentGame!.solution[i][j];
+
+          _playerGrid[i][j] = correctValue;
+          _initialCells[i][j] = true;
+          _notes[i][j].clear();
+          _hintsRemaining--;
+
+          notifyListeners();
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // ✅ NOUVEAU: Restaurer 1 indice après pub
+  void restoreHintWithAd() {
+    _hintsRemaining = 1;
+    notifyListeners();
+  }
   
   void clearCell(int row, int col) {
-    if (_initialCells[row][col] || _isCompleted || _isGameOver) return; // ✅ Bloquer si game over
+    if (_initialCells[row][col] || _isCompleted || _isGameOver) return;
     
     _playerGrid[row][col] = 0;
     _notes[row][col].clear();
@@ -490,9 +526,10 @@ class GameProvider with ChangeNotifier {
     _isCompleted = false;
     _isNoteMode = false;
     _isPaused = false;
-    _isGameOver = false; // ✅ NOUVEAU
+    _isGameOver = false;
     _selectedBooster = null;
     _boosters = [];
+    _hintsRemaining = 3; // ✅ NOUVEAU
     
     notifyListeners();
   }

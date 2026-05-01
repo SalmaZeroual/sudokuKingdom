@@ -5,7 +5,6 @@ import '../../providers/game_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/sudoku_grid.dart';
 import '../../widgets/number_pad.dart';
-import '../../widgets/game_controls.dart';
 import '../modes/classic_mode_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -31,7 +30,6 @@ class _GameScreenState extends State<GameScreen> {
       
       final gameProvider = Provider.of<GameProvider>(context, listen: false);
       
-      // ✅ NOUVEAU: Vérifier Game Over
       if (gameProvider.isGameOver) {
         timer.cancel();
         _showGameOverDialog();
@@ -66,13 +64,11 @@ class _GameScreenState extends State<GameScreen> {
             },
           ),
           actions: [
-            // Bouton Nouvelle Partie
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => _showNewGameDialog(context),
               tooltip: 'Nouvelle partie',
             ),
-            // Bouton mode notes
             IconButton(
               icon: Icon(
                 gameProvider.isNoteMode ? Icons.edit : Icons.edit_outlined,
@@ -104,22 +100,35 @@ class _GameScreenState extends State<GameScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
+                        // Niveau/Difficulté
+                        _GameStat(
+                          icon: Icons.trending_up,
+                          label: 'Niveau',
+                          value: _getDifficultyLabel(gameProvider.difficulty),
+                          color: _getDifficultyColor(gameProvider.difficulty),
+                        ),
                         _GameStat(
                           icon: Icons.access_time,
                           label: 'Temps',
                           value: gameProvider.formattedTime,
                         ),
-                        // ✅ AMÉLIORÉ: Afficher les erreurs avec couleur
                         _GameStat(
                           icon: Icons.close,
                           label: 'Erreurs',
                           value: '${gameProvider.mistakes}/3',
                           isError: gameProvider.mistakes >= 2,
                         ),
-                        _GameStat(
-                          icon: Icons.lightbulb_outline,
-                          label: 'Indices',
-                          value: '${gameProvider.boosters.where((b) => b.boosterType == 'reveal_cell').firstOrNull?.quantity ?? 0}',
+                        // ✅ NOUVEAU: Indices cliquable
+                        GestureDetector(
+                          onTap: () => _useHint(context),
+                          child: _GameStat(
+                            icon: Icons.lightbulb_outline,
+                            label: 'Indices',
+                            value: '${gameProvider.hintsRemaining}',
+                            color: gameProvider.hintsRemaining > 0
+                                ? AppColors.yellow
+                                : AppColors.gray500,
+                          ),
                         ),
                       ],
                     ),
@@ -167,37 +176,16 @@ class _GameScreenState extends State<GameScreen> {
                       notes: gameProvider.notes,
                       selectedRow: selectedRow,
                       selectedCol: selectedCol,
-                      selectedBooster: gameProvider.selectedBooster,
+                      selectedBooster: null,
                       onCellTap: (row, col) {
                         setState(() {
                           selectedRow = row;
                           selectedCol = col;
                         });
-                        
-                        if (gameProvider.selectedBooster == 'reveal_cell') {
-                          gameProvider.useBooster('reveal_cell', row: row, col: col);
-                          setState(() {
-                            selectedRow = null;
-                            selectedCol = null;
-                          });
-                        }
                       },
                     ),
                   ),
                 ),
-              ),
-              
-              // Game Controls
-              GameControls(
-                boosters: gameProvider.boosters,
-                selectedBooster: gameProvider.selectedBooster,
-                onBoosterTap: (type) {
-                  if (gameProvider.selectedBooster == type) {
-                    gameProvider.clearSelection();
-                  } else {
-                    gameProvider.selectBooster(type);
-                  }
-                },
               ),
               
               // Number Pad
@@ -220,8 +208,96 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
+
+  // ✅ NOUVEAU: Logique utilisation indice
+  void _useHint(BuildContext context) {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+    if (gameProvider.hintsRemaining > 0) {
+      final used = gameProvider.useHint();
+      if (used) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('💡 Indice utilisé ! Il en reste ${gameProvider.hintsRemaining}'),
+            backgroundColor: AppColors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      // Plus d'indices → proposer pub
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.lightbulb, color: AppColors.yellow, size: 28),
+              const SizedBox(width: 12),
+              const Text('Plus d\'indices !'),
+            ],
+          ),
+          content: const Text(
+            'Vous avez utilisé vos 3 indices.\nRegardez une publicité pour obtenir un indice supplémentaire.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                gameProvider.restoreHintWithAd();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('📺 Pub regardée - 1 indice accordé !'),
+                    backgroundColor: AppColors.green,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.play_arrow, size: 18),
+              label: const Text('Regarder une pub'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
   
-  // ✅ NOUVEAU: Dialogue Game Over
+  String _getDifficultyLabel(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'facile':
+        return 'Facile';
+      case 'moyen':
+        return 'Moyen';
+      case 'difficile':
+        return 'Difficile';
+      case 'extreme':
+        return 'Extrême';
+      default:
+        return difficulty;
+    }
+  }
+  
+  Color _getDifficultyColor(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'facile':
+        return AppColors.green;
+      case 'moyen':
+        return AppColors.blue;
+      case 'difficile':
+        return AppColors.orange;
+      case 'extreme':
+        return AppColors.red;
+      default:
+        return AppColors.gray500;
+    }
+  }
+  
   void _showGameOverDialog() {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     
@@ -292,24 +368,19 @@ class _GameScreenState extends State<GameScreen> {
           ],
         ),
         actions: [
-          // ✅ Option 1: Quitter
           TextButton(
             onPressed: () async {
               await gameProvider.abandonGame();
               
               if (context.mounted) {
-                Navigator.of(context).pop(); // Close dialog
-                Navigator.of(context).pop(); // Close game screen
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
               }
             },
             child: Text('Quitter'),
           ),
-          
-          // ✅ Option 2: Continuer avec pub (pour plus tard)
           ElevatedButton.icon(
             onPressed: () {
-              // Pour l'instant, continuer directement
-              // Plus tard: Afficher une pub avant
               gameProvider.continueWithAd();
               Navigator.of(context).pop();
               
@@ -332,7 +403,6 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
   
-  // Dialogue pour commencer une nouvelle partie
   Future<void> _showNewGameDialog(BuildContext context) {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     
@@ -602,13 +672,15 @@ class _GameStat extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  final bool isError; // ✅ NOUVEAU
+  final bool isError;
+  final Color? color;
   
   const _GameStat({
     required this.icon,
     required this.label,
     required this.value,
     this.isError = false,
+    this.color,
   });
   
   @override
@@ -617,7 +689,7 @@ class _GameStat extends StatelessWidget {
       children: [
         Icon(
           icon,
-          color: isError ? AppColors.red : AppColors.blue, // ✅ Rouge si erreurs
+          color: color ?? (isError ? AppColors.red : AppColors.blue),
           size: 24,
         ),
         const SizedBox(height: 4),
@@ -626,7 +698,7 @@ class _GameStat extends StatelessWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: isError ? AppColors.red : null, // ✅ Rouge si erreurs
+            color: color ?? (isError ? AppColors.red : null),
           ),
         ),
         Text(
