@@ -13,6 +13,8 @@ import 'modes/story_mode_screen.dart';
 import 'social/friends_screen.dart';
 import 'chat/conversations_screen.dart';
 import 'leagues_screen.dart';
+import 'auth/login_screen.dart';
+import 'auth/register_screen.dart';
 import 'profile_screen.dart';
 import 'game/game_screen.dart';
 
@@ -40,17 +42,64 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
+  // ✅ GUEST: onglets nécessitant un compte (tout sauf Accueil index=0)
+  void _onTabTap(BuildContext context, int index) {
+    if (index != 0) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.isGuest) {
+        _showGuestDialog(context);
+        return;
+      }
+    }
+    setState(() => _currentIndex = index);
+  }
+
+  void _showGuestDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(children: [
+          Icon(Icons.lock_outline, color: AppColors.blue),
+          SizedBox(width: 10),
+          Text('Compte requis'),
+        ]),
+        content: const Text(
+          'Cette section est réservée aux joueurs inscrits.\n\nCrée un compte gratuit pour accéder à toutes les fonctionnalités !',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Pas maintenant'),
+          ),
+          // ✅ FIX: → RegisterScreen directement, pas LoginScreen
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RegisterScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Créer un compte'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: (index) => _onTabTap(context, index),
         type: BottomNavigationBarType.fixed,
         selectedItemColor: AppColors.blue,
         unselectedItemColor: AppColors.gray500,
@@ -97,6 +146,129 @@ class _HomeContentState extends State<_HomeContent> {
     });
   }
   
+  // ✅ GUEST: carte d'invitation à créer un compte
+  Widget _buildGuestCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E293B), Color(0xFF334155)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.person_outline, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Mode invité',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Crée un compte pour sauvegarder tes scores, jouer en Duel et Tournoi !',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.75),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            // ✅ FIX: → RegisterScreen directement
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.blue,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Créer\nun compte',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ GUEST: dialog affiché quand invité tente d'accéder à un mode restreint
+  void _showGuestDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: AppColors.blue),
+            SizedBox(width: 10),
+            Text('Compte requis'),
+          ],
+        ),
+        content: const Text(
+          'Ce mode est réservé aux joueurs inscrits.\n\nCrée un compte gratuit pour accéder au Duel, Tournoi, Énigme, Amis et Messages !',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Pas maintenant'),
+          ),
+          // ✅ FIX: → RegisterScreen directement
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RegisterScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Créer un compte'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _checkForActiveGame() async {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     final hasActiveGame = await gameProvider.checkForActiveGame();
@@ -188,6 +360,7 @@ class _HomeContentState extends State<_HomeContent> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
+    final isGuest = authProvider.isGuest;
     
     return SafeArea(
       child: SingleChildScrollView(
@@ -215,7 +388,34 @@ class _HomeContentState extends State<_HomeContent> {
                     ),
                   ],
                 ),
-                Container(
+                // ✅ GUEST: bouton connexion si invité, XP si connecté
+                if (isGuest)
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pushNamed('/login'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.blue,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.person_outline, color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'Connexion',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: AppColors.gray50,
@@ -241,6 +441,10 @@ class _HomeContentState extends State<_HomeContent> {
             
             const SizedBox(height: 24),
             
+            // ✅ GUEST: carte invité ou carte stats selon l'état
+            if (isGuest)
+              _buildGuestCard(context)
+            else
             // Player Stats Card
             Container(
               decoration: BoxDecoration(
@@ -369,6 +573,11 @@ class _HomeContentState extends State<_HomeContent> {
                   subtitle: 'Affrontement temps réel',
                   gradient: const [AppColors.red, AppColors.orange],
                   onTap: () {
+                    // ✅ GUEST: Duel nécessite un compte
+                    if (isGuest) {
+                      _showGuestDialog(context);
+                      return;
+                    }
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const DuelModeScreen()),
                     );
@@ -380,6 +589,11 @@ class _HomeContentState extends State<_HomeContent> {
                   subtitle: 'Classement mondial',
                   gradient: const [AppColors.yellow, Color(0xFFF59E0B)],
                   onTap: () {
+                    // ✅ GUEST: Tournoi nécessite un compte
+                    if (isGuest) {
+                      _showGuestDialog(context);
+                      return;
+                    }
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const TournamentModeScreen()),
                     );
@@ -391,6 +605,11 @@ class _HomeContentState extends State<_HomeContent> {
                   subtitle: 'Histoire & aventure',
                   gradient: const [AppColors.purple, Color(0xFF7C3AED)],
                   onTap: () {
+                    // ✅ GUEST: Énigme nécessite un compte
+                    if (isGuest) {
+                      _showGuestDialog(context);
+                      return;
+                    }
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const StoryModeScreen()),
                     );

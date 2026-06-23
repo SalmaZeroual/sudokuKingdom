@@ -128,7 +128,7 @@ class ClassicModeScreen extends StatelessWidget {
       ),
     );
     
-    await gameProvider.startNewGame(AppConstants.modeClassic, difficulty);
+    await gameProvider.startNewGame(AppConstants.modeClassic, difficulty, context: context);
     
     if (context.mounted) {
       Navigator.of(context).pop();

@@ -2,9 +2,11 @@ class AppConstants {
   // API
   static const String baseUrl = 'http://localhost:3000/api';
   static const String socketUrl = 'http://localhost:3000';
-  //static const String baseUrl = 'http://172.18.236.53:3000/api';
-  //static const String socketUrl = 'http://l172.18.236.53:3000';
-  
+  //static const String baseUrl = 'http://10.53.65.53:3000/api';
+  //static const String socketUrl = 'http://10.53.65.53:3000';
+  //static const String baseUrl = 'https://left-uniquely-flatly.ngrok-free.dev/api';
+  //static const String socketUrl = 'https://left-uniquely-flatly.ngrok-free.dev';
+
   // Storage Keys
   static const String tokenKey = 'auth_token';
   static const String userIdKey = 'user_id';

@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import 'tutorial/tutorial_screen.dart';
+// Importez vos services ici
+import '../services/notification_service.dart';
+import '../services/offline_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -35,30 +38,41 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     
     _controller.forward();
     
-    _checkAuthAndTutorial();
+    // On lance la séquence d'initialisation
+    _initializeApp();
+  }
+  
+  Future<void> _initializeApp() async {
+    // 1. Initialiser les services en arrière-plan
+    try {
+      await NotificationService.instance.init();
+      await NotificationService.instance.requestPermissions(); // Demande ici après le démarrage
+      NotificationService.instance.scheduleDailyTournamentNotification();
+      OfflineService.instance.startListening();
+    } catch (e) {
+      debugPrint("Erreur init services: $e");
+    }
+
+    // 2. Vérifier l'authentification
+    await _checkAuthAndTutorial();
   }
   
   Future<void> _checkAuthAndTutorial() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     await authProvider.checkAuthStatus();
     
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 1)); // Temps pour finir les anims
     
     if (mounted) {
       final prefs = await SharedPreferences.getInstance();
       final tutorialCompleted = prefs.getBool('tutorial_completed') ?? false;
       
       if (!tutorialCompleted) {
-        // Premier lancement - montrer tutoriel
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const TutorialScreen()),
         );
-      } else if (authProvider.isAuthenticated) {
-        // Connecté - aller à l'accueil
-        Navigator.of(context).pushReplacementNamed('/home');
       } else {
-        // Non connecté - aller au login
-        Navigator.of(context).pushReplacementNamed('/login');
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     }
   }
@@ -69,6 +83,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.dispose();
   }
   
+  // ... (votre méthode build reste inchangée) ...
   @override
   Widget build(BuildContext context) {
     return Scaffold(

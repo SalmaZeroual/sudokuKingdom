@@ -17,7 +17,7 @@ import 'screens/home_screen.dart';
 import 'config/theme.dart';
 
 void main() async {
-  // ✅ Initialiser Flutter bindings
+  // ✅ Initialiser Flutter bindings (Indispensable)
   WidgetsFlutterBinding.ensureInitialized();
   
   // ✅ Initialiser les locales pour intl
@@ -26,6 +26,7 @@ void main() async {
   // ✅ Configurer timeago en français
   timeago.setLocaleMessages('fr', timeago.FrMessages());
   
+  // L'application se lance maintenant proprement sans attendre les services réseau/notifs
   runApp(const SudokuKingdomApp());
 }
 
@@ -49,7 +50,6 @@ class SudokuKingdomApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         
-        // ✅ Ajouter les localisations
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,

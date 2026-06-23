@@ -8,8 +8,32 @@ import '../widgets/avatar_widget.dart';
 import 'avatar_selection_screen.dart';
 import 'settings_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _savingDiscoverability = false;
+
+  Future<void> _updateDiscoverability(BuildContext context, String value) async {
+    setState(() => _savingDiscoverability = true);
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.apiService.patch('/user/discoverability', {'discoverability': value});
+      await authProvider.loadUser();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de la mise à jour'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingDiscoverability = false);
+    }
+  }
 
   // ✅ AJOUTÉ : Logout intelligent avec dialog "garder le mot de passe"
   Future<void> _handleLogout(BuildContext context) async {
@@ -291,12 +315,70 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Partagez votre ID unique à 10 chiffres avec vos amis. Ils pourront vous trouver en le tapant dans la recherche.',
+                    'Partagez votre ID unique à 10 chiffres. Ou activez la recherche par nom pour être trouvable directement.',
                     style: TextStyle(
                       fontSize: 13,
                       color: AppColors.gray600,
                       height: 1.4,
                     ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ── Paramètre de découvrabilité ────────────────────────
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.gray50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.gray200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.search, color: AppColors.blue, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Qui peut me trouver ?',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.gray700,
+                        ),
+                      ),
+                      if (_savingDiscoverability) ...[
+                        const Spacer(),
+                        const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _DiscoverabilityOption(
+                    icon: Icons.badge,
+                    label: 'ID uniquement',
+                    description: 'Seulement les personnes qui ont ton ID exact',
+                    selected: (user?.discoverability ?? 'id_only') == 'id_only',
+                    onTap: _savingDiscoverability
+                        ? null
+                        : () => _updateDiscoverability(context, 'id_only'),
+                  ),
+                  const SizedBox(height: 8),
+                  _DiscoverabilityOption(
+                    icon: Icons.person_search,
+                    label: 'Par nom',
+                    description: 'N\'importe qui peut te trouver en tapant ton nom',
+                    selected: (user?.discoverability ?? 'id_only') == 'username',
+                    onTap: _savingDiscoverability
+                        ? null
+                        : () => _updateDiscoverability(context, 'username'),
                   ),
                 ],
               ),
@@ -371,6 +453,68 @@ class _StatCard extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: AppColors.gray600),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DiscoverabilityOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String description;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _DiscoverabilityOption({
+    required this.icon,
+    required this.label,
+    required this.description,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.blue.withOpacity(0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? AppColors.blue : AppColors.gray200,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: selected ? AppColors.blue : AppColors.gray400, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: selected ? AppColors.blue : AppColors.gray700,
+                    ),
+                  ),
+                  Text(
+                    description,
+                    style: TextStyle(fontSize: 12, color: AppColors.gray500),
+                  ),
+                ],
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check_circle, color: AppColors.blue, size: 20),
+          ],
+        ),
       ),
     );
   }

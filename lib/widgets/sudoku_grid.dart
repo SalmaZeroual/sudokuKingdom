@@ -131,26 +131,42 @@ class _SudokuCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Determine background color based on highlighting rules
+    // ── Couleur de fond ───────────────────────────────────────────────
     Color backgroundColor = Colors.white;
-    
+
     if (isError) {
-      // Erreur a la priorité la plus haute
-      backgroundColor = AppColors.red.withOpacity(0.2);
+      backgroundColor = AppColors.red.withOpacity(0.15);
     } else if (isSelected) {
-      // Cellule sélectionnée - bleu moyen
-      backgroundColor = const Color(0xFFBBDEFB); // Bleu clair
+      backgroundColor = const Color(0xFF90CAF9); // bleu moyen — cellule active
     } else if (hasSameNumber) {
-      // Même chiffre - brille fort (bleu plus intense)
-      backgroundColor = const Color(0xFF90CAF9); // Bleu moyen-fort
+      // ✅ Avant : 0xFF90CAF9 (bleu intense) → les chiffres pré-remplis
+      // devenaient illisibles. Maintenant bleu très pâle.
+      backgroundColor = const Color(0xFFDCEEFD);
     } else if (isSameRow || isSameCol) {
-      // Même ligne ou colonne - surbrillance légère
-      backgroundColor = const Color(0xFFE3F2FD); // Bleu très clair
+      backgroundColor = const Color(0xFFEEF5FD); // bleu quasi-blanc
     } else if (isSameBox) {
-      // Même boîte 3x3 - surbrillance très légère
-      backgroundColor = const Color(0xFFF5F5F5); // Gris très clair
+      backgroundColor = const Color(0xFFF8F8F8); // gris très clair
     }
-    
+
+    // ── Couleur du texte ──────────────────────────────────────────────
+    Color textColor;
+    if (isError) {
+      textColor = AppColors.red;
+    } else if (isSelected) {
+      // ✅ Cellule sélectionnée (fond bleu) → texte blanc pour contraste
+      textColor = isInitial ? Colors.white : Colors.white;
+    } else if (isInitial) {
+      // Chiffres pré-remplis → toujours noir, quelle que soit la surbrillance
+      textColor = AppColors.gray900;
+    } else if (hasSameNumber) {
+      // ✅ Avant : AppColors.highlightSameNumber (bleu #90CAF9) sur fond bleu
+      // → invisible. Maintenant bleu foncé sur fond très pâle.
+      textColor = const Color(0xFF1565C0);
+    } else {
+      // Chiffres saisis par le joueur → bleu primaire
+      textColor = AppColors.blue;
+    }
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeInOut,
@@ -180,11 +196,7 @@ class _SudokuCell extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: isInitial 
-                          ? AppColors.gray900 
-                          : hasSameNumber
-                              ? AppColors.highlightSameNumber 
-                              : AppColors.highlightSameNumber,
+                      color: textColor,
                     ),
                   )
                 : notes.isNotEmpty

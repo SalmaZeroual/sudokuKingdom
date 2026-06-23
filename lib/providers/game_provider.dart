@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:math';
 import '../models/game_model.dart';
 import '../models/booster_model.dart';
 import '../services/api_service.dart';
+import '../providers/auth_provider.dart';
+import 'package:provider/provider.dart';
 
 class GameProvider with ChangeNotifier {
   GameModel? _currentGame;
@@ -87,24 +90,28 @@ class GameProvider with ChangeNotifier {
   // Initialize game for Story Mode
   void initializeStoryGame(List<List<int>> grid, List<List<int>> solution) {
     print('🎮 Initializing story game...');
-    print('Grid: ${grid.length}x${grid.isNotEmpty ? grid[0].length : 0}');
-    
+
     _currentGame = null;
-    
-    _playerGrid = List.generate(9, (i) => List<int>.from(grid[i]));
+
+    _playerGrid   = List.generate(9, (i) => List<int>.from(grid[i]));
     _solutionGrid = List.generate(9, (i) => List<int>.from(solution[i]));
-    
+
     _initialCells = List.generate(9, (i) => List.generate(9, (j) => grid[i][j] != 0));
-    _errorCells = List.generate(9, (_) => List.generate(9, (_) => false));
-    _notes = List.generate(9, (_) => List.generate(9, (_) => <int>{}));
-    
-    _mistakes = 0;
-    _isNoteMode = false;
-    _isPaused = false;
-    _isGameOver = false;
-    _hintsRemaining = 3; // ✅ NOUVEAU
-    
-    print('✅ Story game initialized! Grid: ${_playerGrid[0]}');
+    _errorCells   = List.generate(9, (_) => List.generate(9, (_) => false));
+    _notes        = List.generate(9, (_) => List.generate(9, (_) => <int>{}));
+
+    _mistakes     = 0;
+    _isNoteMode   = false;
+    _isPaused     = false;
+    _isGameOver   = false;
+    _hintsRemaining = 3;
+
+    // ✅ Bug corrigé : _isCompleted n'était pas remis à false lors du passage
+    // au chapitre suivant. setCellValue bloque si _isCompleted = true →
+    // le clavier était muet sur tous les chapitres après le premier.
+    _isCompleted  = false;
+
+    print('✅ Story game initialized for new chapter');
     notifyListeners();
   }
   
@@ -183,40 +190,138 @@ class GameProvider with ChangeNotifier {
     }
   }
   
-  Future<void> startNewGame(String mode, String difficulty) async {
+  Future<void> startNewGame(String mode, String difficulty, {BuildContext? context}) async {
     try {
       _isLoading = true;
       notifyListeners();
-      
-      final response = await _apiService.post('/game/start', {
-        'mode': mode,
-        'difficulty': difficulty,
-      });
-      
-      _currentGame = GameModel.fromJson(response);
-      _playerGrid = _currentGame!.grid.map((row) => List<int>.from(row)).toList();
-      _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentGame!.grid[i][j] != 0));
-      _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
-      _notes = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
-      
+
+      // ✅ GUEST: vérifier si connecté
+      bool isGuest = true;
+      if (context != null) {
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        isGuest = auth.isGuest;
+      }
+
+      if (!isGuest) {
+        // ── Connecté : appel API normal ──────────────────────────
+        final response = await _apiService.post('/game/start', {
+          'mode': mode,
+          'difficulty': difficulty,
+        });
+
+        _currentGame = GameModel.fromJson(response);
+        _playerGrid   = _currentGame!.grid.map((row) => List<int>.from(row)).toList();
+        _solutionGrid = _currentGame!.solution.map((row) => List<int>.from(row)).toList();
+        _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentGame!.grid[i][j] != 0));
+
+        await loadBoosters();
+      } else {
+        // ── Invité : génération locale ────────────────────────────
+        _currentGame = null;
+        final generated = _generateLocalGrid(difficulty);
+        _playerGrid   = generated['grid']!;
+        _solutionGrid = generated['solution']!;
+        _initialCells = List.generate(9, (i) => List.generate(9, (j) => _playerGrid[i][j] != 0));
+        _boosters     = []; // pas de boosters en mode invité
+      }
+
+      _errorCells     = List.generate(9, (i) => List.generate(9, (j) => false));
+      _notes          = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
       _elapsedSeconds = 0;
-      _mistakes = 0;
-      _isCompleted = false;
-      _isNoteMode = false;
-      _isGameOver = false;
-      _hintsRemaining = 3; // ✅ NOUVEAU
-      
+      _mistakes       = 0;
+      _isCompleted    = false;
+      _isNoteMode     = false;
+      _isGameOver     = false;
+      _hintsRemaining = 3;
+
       _startTimer();
       _startAutoSave();
-      await loadBoosters();
-      
+
       _isLoading = false;
       notifyListeners();
     } catch (e) {
       print('Error starting game: $e');
+      // ✅ GUEST fallback: si API échoue, générer localement quand même
+      try {
+        final generated = _generateLocalGrid(difficulty);
+        _playerGrid   = generated['grid']!;
+        _solutionGrid = generated['solution']!;
+        _initialCells = List.generate(9, (i) => List.generate(9, (j) => _playerGrid[i][j] != 0));
+        _errorCells   = List.generate(9, (i) => List.generate(9, (j) => false));
+        _notes        = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
+        _elapsedSeconds = 0;
+        _mistakes       = 0;
+        _isCompleted    = false;
+        _isNoteMode     = false;
+        _isGameOver     = false;
+        _hintsRemaining = 3;
+        _boosters       = [];
+        _startTimer();
+        _startAutoSave();
+      } catch (e2) {
+        print('Local generation also failed: $e2');
+      }
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  // ── Génération locale de grille (sans API) ──────────────────────────────
+
+  Map<String, List<List<int>>> _generateLocalGrid(String difficulty) {
+    final solution = _buildSolution();
+    final grid     = _removeClues(solution, difficulty);
+    return {'grid': grid, 'solution': solution};
+  }
+
+  List<List<int>> _buildSolution() {
+    final grid = List.generate(9, (_) => List.filled(9, 0));
+    _fillGrid(grid);
+    return grid;
+  }
+
+  bool _fillGrid(List<List<int>> grid) {
+    final rng = Random();
+    for (int r = 0; r < 9; r++) {
+      for (int c = 0; c < 9; c++) {
+        if (grid[r][c] != 0) continue;
+        final nums = List.generate(9, (i) => i + 1)..shuffle(rng);
+        for (final n in nums) {
+          if (_isSafe(grid, r, c, n)) {
+            grid[r][c] = n;
+            if (_fillGrid(grid)) return true;
+            grid[r][c] = 0;
+          }
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _isSafe(List<List<int>> g, int row, int col, int n) {
+    for (int i = 0; i < 9; i++) {
+      if (g[row][i] == n || g[i][col] == n) return false;
+    }
+    final br = (row ~/ 3) * 3, bc = (col ~/ 3) * 3;
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+        if (g[br + i][bc + j] == n) return false;
+      }
+    }
+    return true;
+  }
+
+  List<List<int>> _removeClues(List<List<int>> solution, String difficulty) {
+    final empty = {'facile': 30, 'moyen': 40, 'difficile': 50, 'extreme': 58}[difficulty] ?? 40;
+    final grid  = solution.map((r) => List<int>.from(r)).toList();
+    final rng   = Random();
+    int removed = 0;
+    while (removed < empty) {
+      final r = rng.nextInt(9), c = rng.nextInt(9);
+      if (grid[r][c] != 0) { grid[r][c] = 0; removed++; }
+    }
+    return grid;
   }
   
   Future<void> loadBoosters() async {

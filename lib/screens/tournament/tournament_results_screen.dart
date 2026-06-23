@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import '../../providers/tournament_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../models/tournament_model.dart';
+import '../../widgets/share_result_sheet.dart';
+import '../../widgets/achievement_share_card.dart';
 import 'package:confetti/confetti.dart';
 
 class TournamentResultsScreen extends StatefulWidget {
@@ -349,41 +352,77 @@ class _TournamentResultsScreenState extends State<TournamentResultsScreen>
                     // Buttons
                     Padding(
                       padding: EdgeInsets.all(24),
-                      child: Row(
+                      child: Column(
                         children: [
-                          Expanded(
-                            child: OutlinedButton(
+                          // ── Bouton Partager ────────────────────────
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
                               onPressed: () {
-                                Navigator.of(context).popUntil((route) => route.isFirst);
+                                final user = Provider.of<AuthProvider>(context, listen: false).user;
+                                ShareResultSheet.show(
+                                  context,
+                                  ShareCardData(
+                                    type: ShareCardType.tournament,
+                                    difficulty: widget.tournament.difficulty,
+                                    time: _formattedTime,
+                                    score: widget.score,
+                                    mistakes: widget.mistakes,
+                                    username: user?.username ?? '',
+                                    level: user?.level ?? 1,
+                                    rank: _myRank,
+                                    totalPlayers: widget.tournament.participants,
+                                  ),
+                                );
                               },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: BorderSide(color: Colors.white, width: 2),
-                                padding: EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: Text('Accueil', style: TextStyle(fontSize: 16)),
-                            ),
-                          ),
-                          SizedBox(width: 16),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                // Show full leaderboard
-                                _showFullLeaderboard(context);
-                              },
+                              icon: const Icon(Icons.share_rounded),
+                              label: const Text('Partager ma réussite', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 foregroundColor: _isTop3 ? AppColors.yellow : AppColors.blue,
-                                padding: EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    Navigator.of(context).popUntil((route) => route.isFirst);
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    side: BorderSide(color: Colors.white, width: 2),
+                                    padding: EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: Text('Accueil', style: TextStyle(fontSize: 16)),
                                 ),
                               ),
-                              child: Text('Classement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                            ),
+                              SizedBox(width: 16),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    // Show full leaderboard
+                                    _showFullLeaderboard(context);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: _isTop3 ? AppColors.yellow : AppColors.blue,
+                                    padding: EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: Text('Classement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

@@ -5,7 +5,12 @@ import '../config/constants.dart';
 
 class ApiService {
   final String baseUrl = AppConstants.baseUrl;
-  
+
+  // ✅ Timeout global : si le serveur ne répond pas en 10 s,
+  // la requête échoue proprement au lieu de rester bloquée indéfiniment.
+  // (Cas typique : 4G activée mais sans signal réel)
+  static const _timeout = Duration(seconds: 10);
+
   Future<Map<String, String>> _getHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(AppConstants.tokenKey);
@@ -19,60 +24,76 @@ class ApiService {
   Future<dynamic> get(String endpoint) async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: headers,
-      );
-      
+      final response = await http
+          .get(Uri.parse('$baseUrl$endpoint'), headers: headers)
+          .timeout(_timeout);
       return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Erreur de connexion: $e');
+    } on Exception {
+      rethrow;
     }
   }
   
   Future<dynamic> post(String endpoint, Map<String, dynamic> body) async {
     try {
       final headers = await _getHeaders();
-      final response = await http.post(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: headers,
-        body: jsonEncode(body),
-      );
-      
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl$endpoint'),
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
       return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Erreur de connexion: $e');
+    } on Exception {
+      rethrow;
     }
   }
   
   Future<dynamic> put(String endpoint, Map<String, dynamic> body) async {
     try {
       final headers = await _getHeaders();
-      final response = await http.put(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: headers,
-        body: jsonEncode(body),
-      );
-      
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl$endpoint'),
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
       return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Erreur de connexion: $e');
+    } on Exception {
+      rethrow;
     }
   }
 
-  // ✅ body est maintenant optionnel : delete simple ou delete avec mot de passe
+  Future<dynamic> patch(String endpoint, Map<String, dynamic> body) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl$endpoint'),
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      return _handleResponse(response);
+    } on Exception {
+      rethrow;
+    }
+  }
+
   Future<dynamic> delete(String endpoint, {Map<String, dynamic>? body}) async {
     try {
       final headers = await _getHeaders();
-      final response = await http.delete(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: headers,
-        body: body != null ? jsonEncode(body) : null,
-      );
-      
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl$endpoint'),
+            headers: headers,
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(_timeout);
       return _handleResponse(response);
-    } catch (e) {
-      throw Exception('Erreur de connexion: $e');
+    } on Exception {
+      rethrow;
     }
   }
   

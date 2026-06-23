@@ -8,33 +8,35 @@ import '../../models/tournament_model.dart';
 
 class TournamentLeaderboardScreen extends StatefulWidget {
   final TournamentModel tournament;
-  
+
   const TournamentLeaderboardScreen({
     Key? key,
     required this.tournament,
   }) : super(key: key);
 
   @override
-  State<TournamentLeaderboardScreen> createState() => _TournamentLeaderboardScreenState();
+  State<TournamentLeaderboardScreen> createState() =>
+      _TournamentLeaderboardScreenState();
 }
 
-class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScreen> {
+class _TournamentLeaderboardScreenState
+    extends State<TournamentLeaderboardScreen> {
   int? _currentUserId;
-  
+
   @override
   void initState() {
     super.initState();
     _loadCurrentUserId();
     _loadLeaderboard();
   }
-  
+
   Future<void> _loadCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _currentUserId = prefs.getInt(AppConstants.userIdKey);
     });
   }
-  
+
   Future<void> _loadLeaderboard() async {
     final provider = Provider.of<TournamentProvider>(context, listen: false);
     await provider.loadLeaderboard(widget.tournament.id);
@@ -53,11 +55,11 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
         ],
       ),
       body: Consumer<TournamentProvider>(
-        builder: (context, provider, child) {
+        builder: (context, provider, _) {
           if (provider.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-          
+
           return RefreshIndicator(
             onRefresh: _loadLeaderboard,
             child: SingleChildScrollView(
@@ -65,18 +67,16 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Tournament header
                   _buildTournamentHeader(),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Podium (Top 3)
-                  if (provider.leaderboard.isNotEmpty)
-                    _buildPodium(provider),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Remaining leaderboard
+                  const SizedBox(height: 24),
+
+                  // ── Toggle Mondial / Amis ──────────────────────────
+                  _buildLeaderboardToggle(provider),
+                  const SizedBox(height: 24),
+
+                  if (provider.leaderboard.isNotEmpty) _buildPodium(provider),
+                  const SizedBox(height: 24),
+
                   _buildLeaderboard(provider),
                 ],
               ),
@@ -86,7 +86,116 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ),
     );
   }
-  
+
+  // ─── Toggle mondial / amis ─────────────────────────────────────────────
+
+  Widget _buildLeaderboardToggle(TournamentProvider provider) {
+    final isGlobal = provider.leaderboardType == 'global';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.gray100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+          // Bouton Mondial
+          Expanded(
+            child: GestureDetector(
+              onTap: () => provider.setLeaderboardType('global'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: isGlobal ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: isGlobal
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          )
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.public,
+                      size: 18,
+                      color: isGlobal ? AppColors.blue : AppColors.gray500,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Mondial',
+                      style: TextStyle(
+                        fontWeight: isGlobal
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isGlobal ? AppColors.blue : AppColors.gray500,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Bouton Amis
+          Expanded(
+            child: GestureDetector(
+              onTap: () => provider.setLeaderboardType('friends'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: !isGlobal ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: !isGlobal
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          )
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.people,
+                      size: 18,
+                      color: !isGlobal ? AppColors.purple : AppColors.gray500,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Amis',
+                      style: TextStyle(
+                        fontWeight: !isGlobal
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: !isGlobal ? AppColors.purple : AppColors.gray500,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Header tournoi ───────────────────────────────────────────────────
+
   Widget _buildTournamentHeader() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -108,17 +217,13 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.emoji_events,
-                color: Colors.white,
-                size: 32,
-              ),
+              const Icon(Icons.emoji_events, color: Colors.white, size: 32),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   widget.tournament.name,
                   style: const TextStyle(
-                    fontSize: 22,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -126,53 +231,18 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
               ),
             ],
           ),
-          
           const SizedBox(height: 16),
-          
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Participants',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${widget.tournament.participants}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
+              _HeaderStat(
+                label: 'Participants',
+                value: '${widget.tournament.participants}',
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'Temps restant',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.tournament.timeRemainingFormatted,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
+              _HeaderStat(
+                label: 'Temps restant',
+                value: widget.tournament.timeRemainingFormatted,
+                align: CrossAxisAlignment.end,
               ),
             ],
           ),
@@ -180,19 +250,17 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ),
     );
   }
-  
+
+  // ─── Podium ───────────────────────────────────────────────────────────
+
   Widget _buildPodium(TournamentProvider provider) {
     final top3 = provider.getTop3();
-    
-    if (top3.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    
-    // Préparer les positions (2ème, 1er, 3ème)
-    final second = top3.length > 1 ? top3[1] : null;
+    if (top3.isEmpty) return const SizedBox.shrink();
+
     final first = top3[0];
+    final second = top3.length > 1 ? top3[1] : null;
     final third = top3.length > 2 ? top3[2] : null;
-    
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -207,23 +275,21 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ),
       child: Column(
         children: [
-          const Text(
-            '🏆 PODIUM 🏆',
-            style: TextStyle(
+          Text(
+            provider.leaderboardType == 'friends'
+                ? '🏆 TOP AMIS 🏆'
+                : '🏆 PODIUM 🏆',
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: AppColors.yellow,
             ),
           ),
-          
           const SizedBox(height: 24),
-          
-          // Podium layout
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // 2nd place
               if (second != null)
                 Expanded(
                   child: _buildPodiumPlace(
@@ -234,10 +300,7 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
                     color: const Color(0xFFC0C0C0),
                   ),
                 ),
-              
               const SizedBox(width: 12),
-              
-              // 1st place
               Expanded(
                 child: _buildPodiumPlace(
                   rank: 1,
@@ -247,10 +310,7 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
                   color: const Color(0xFFFFD700),
                 ),
               ),
-              
               const SizedBox(width: 12),
-              
-              // 3rd place
               if (third != null)
                 Expanded(
                   child: _buildPodiumPlace(
@@ -267,7 +327,7 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ),
     );
   }
-  
+
   Widget _buildPodiumPlace({
     required int rank,
     required TournamentParticipation participation,
@@ -276,18 +336,11 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
     required Color color,
   }) {
     final isCurrentUser = participation.userId == _currentUserId;
-    
+
     return Column(
       children: [
-        // Medal
-        Text(
-          medal,
-          style: const TextStyle(fontSize: 40),
-        ),
-        
+        Text(medal, style: const TextStyle(fontSize: 40)),
         const SizedBox(height: 8),
-        
-        // Username
         Text(
           isCurrentUser ? 'Vous' : participation.username,
           style: TextStyle(
@@ -299,22 +352,16 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        
         const SizedBox(height: 4),
-        
-        // Score
         Text(
-          '${participation.score} pts',
+          participation.scoreLabel,
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppColors.gray600,
           ),
         ),
-        
         const SizedBox(height: 8),
-        
-        // Podium base
         Container(
           height: height,
           decoration: BoxDecoration(
@@ -323,9 +370,7 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(8),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
             border: Border.all(
               color: isCurrentUser ? AppColors.blue : Colors.transparent,
               width: 2,
@@ -345,7 +390,9 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ],
     );
   }
-  
+
+  // ─── Liste classement ─────────────────────────────────────────────────
+
   Widget _buildLeaderboard(TournamentProvider provider) {
     if (provider.leaderboard.isEmpty) {
       return Center(
@@ -353,18 +400,13 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
           padding: const EdgeInsets.all(40),
           child: Column(
             children: [
-              Icon(
-                Icons.emoji_events_outlined,
-                size: 64,
-                color: AppColors.gray300,
-              ),
+              Icon(Icons.emoji_events_outlined, size: 64, color: AppColors.gray300),
               const SizedBox(height: 16),
               Text(
-                'Aucune participation pour l\'instant',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: AppColors.gray500,
-                ),
+                provider.leaderboardType == 'friends'
+                    ? 'Aucun ami n\'a encore participé'
+                    : 'Aucune participation pour l\'instant',
+                style: TextStyle(fontSize: 16, color: AppColors.gray500),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -372,22 +414,20 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
         ),
       );
     }
-    
-    // Afficher à partir du 4ème
+
     final remaining = provider.leaderboard.length > 3
         ? provider.leaderboard.skip(3).toList()
         : <TournamentParticipation>[];
-    
-    // Ajouter la position de l'utilisateur actuel s'il n'est pas dans le top 3
-    final currentUserParticipation = provider.getCurrentUserParticipation(_currentUserId ?? 0);
+
+    final currentUserParticipation =
+        provider.getCurrentUserParticipation(_currentUserId ?? 0);
+
     final showCurrentUser = currentUserParticipation != null &&
         currentUserParticipation.rank > 3 &&
         !remaining.any((p) => p.userId == _currentUserId);
-    
-    if (remaining.isEmpty && !showCurrentUser) {
-      return const SizedBox.shrink();
-    }
-    
+
+    if (remaining.isEmpty && !showCurrentUser) return const SizedBox.shrink();
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -405,33 +445,20 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Classement',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          
           const SizedBox(height: 16),
-          
-          // Liste des autres positions
-          ...remaining.map((participation) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildLeaderboardItem(
-                participation,
-                isCurrentUser: participation.userId == _currentUserId,
-              ),
-            );
-          }).toList(),
-          
-          // Séparateur si on affiche l'utilisateur en dehors du top
-          if (showCurrentUser && remaining.isNotEmpty) ...[
+          ...remaining.map((p) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildLeaderboardItem(
+                  p,
+                  isCurrentUser: p.userId == _currentUserId,
+                ),
+              )),
+          if (showCurrentUser && remaining.isNotEmpty)
             const Divider(height: 32),
-          ],
-          
-          // Position de l'utilisateur actuel
           if (showCurrentUser)
             _buildLeaderboardItem(
               currentUserParticipation,
@@ -442,7 +469,7 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ),
     );
   }
-  
+
   Widget _buildLeaderboardItem(
     TournamentParticipation participation, {
     bool isCurrentUser = false,
@@ -451,9 +478,7 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: highlight
-            ? AppColors.blue.withOpacity(0.1)
-            : Colors.transparent,
+        color: highlight ? AppColors.blue.withOpacity(0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: highlight ? AppColors.blue : AppColors.gray200,
@@ -462,7 +487,6 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ),
       child: Row(
         children: [
-          // Rank
           Container(
             width: 40,
             height: 40,
@@ -473,17 +497,11 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
             child: Center(
               child: Text(
                 '#${participation.rank}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
             ),
           ),
-          
           const SizedBox(width: 16),
-          
-          // Name
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -498,28 +516,25 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _formatTime(participation.time),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.gray600,
-                  ),
+                  participation.timeLabel,
+                  style: TextStyle(fontSize: 12, color: AppColors.gray600),
                 ),
               ],
             ),
           ),
-          
-          // Score
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.yellow.withOpacity(0.1),
+              color: participation.hasScore
+                  ? AppColors.yellow.withOpacity(0.1)
+                  : AppColors.gray100,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              '${participation.score} pts',
-              style: const TextStyle(
+              participation.scoreLabel,
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: AppColors.yellow,
+                color: participation.hasScore ? AppColors.yellow : AppColors.gray500,
                 fontSize: 14,
               ),
             ),
@@ -528,10 +543,46 @@ class _TournamentLeaderboardScreenState extends State<TournamentLeaderboardScree
       ),
     );
   }
-  
+
   String _formatTime(int seconds) {
-    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
-    final secs = (seconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$secs';
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+}
+
+// ─── Petits widgets helpers ────────────────────────────────────────────────
+
+class _HeaderStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final CrossAxisAlignment align;
+
+  const _HeaderStat({
+    required this.label,
+    required this.value,
+    this.align = CrossAxisAlignment.start,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: align,
+      children: [
+        Text(
+          label,
+          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
   }
 }

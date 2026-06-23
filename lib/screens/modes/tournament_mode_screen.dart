@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../config/theme.dart';
 import '../../models/tournament_model.dart';
 import '../tournament/tournament_game_screen.dart';
+import '../tournament/tournament_leaderboard_screen.dart';
 
 class TournamentModeScreen extends StatefulWidget {
   const TournamentModeScreen({Key? key}) : super(key: key);
@@ -13,14 +15,44 @@ class TournamentModeScreen extends StatefulWidget {
 }
 
 class _TournamentModeScreenState extends State<TournamentModeScreen> {
+  // Compte à rebours jusqu'à minuit
+  late Timer _countdownTimer;
+  Duration _timeUntilMidnight = Duration.zero;
+
   @override
   void initState() {
     super.initState();
+    _updateCountdown();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) _updateCountdown();
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<TournamentProvider>(context, listen: false).loadTournaments();
     });
   }
-  
+
+  void _updateCountdown() {
+    final now = DateTime.now();
+    final midnight = DateTime(now.year, now.month, now.day + 1);
+    setState(() {
+      _timeUntilMidnight = midnight.difference(now);
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer.cancel();
+    super.dispose();
+  }
+
+  String get _countdownText {
+    final h = _timeUntilMidnight.inHours.toString().padLeft(2, '0');
+    final m = (_timeUntilMidnight.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (_timeUntilMidnight.inSeconds % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -33,18 +65,18 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              Provider.of<TournamentProvider>(context, listen: false).loadTournaments();
-            },
+            onPressed: () =>
+                Provider.of<TournamentProvider>(context, listen: false)
+                    .loadTournaments(),
           ),
         ],
       ),
       body: Consumer<TournamentProvider>(
-        builder: (context, provider, child) {
+        builder: (context, provider, _) {
           if (provider.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-          
+
           return RefreshIndicator(
             onRefresh: () => provider.loadTournaments(),
             child: SingleChildScrollView(
@@ -52,27 +84,24 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
                   _buildHeader(),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Info
+                  const SizedBox(height: 16),
+
+                  // ── Compte à rebours jusqu'à la prochaine rotation ──
+                  _buildCountdownBanner(),
+                  const SizedBox(height: 24),
+
                   _buildInfoCard(),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Difficulty Selection (Tournaments)
+                  const SizedBox(height: 28),
+
                   Text(
                     'Choisissez votre niveau',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
-                  // Grid with 4 tournaments
+
                   _buildTournamentsGrid(provider),
                 ],
               ),
@@ -82,7 +111,9 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
       ),
     );
   }
-  
+
+  // ─── Widgets ────────────────────────────────────────────────────────────
+
   Widget _buildHeader() {
     return Row(
       children: [
@@ -92,11 +123,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
             color: AppColors.yellow.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Icon(
-            Icons.emoji_events,
-            color: AppColors.yellow,
-            size: 32,
-          ),
+          child: const Icon(Icons.emoji_events, color: AppColors.yellow, size: 32),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -104,17 +131,17 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Tournois Hebdomadaires',
+                'Tournois Quotidiens',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
               const SizedBox(height: 4),
               Text(
-                'Affrontez les meilleurs joueurs',
+                'Nouvelle grille chaque jour à minuit',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.gray500,
-                ),
+                      color: AppColors.gray500,
+                    ),
               ),
             ],
           ),
@@ -122,13 +149,59 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
       ],
     );
   }
-  
+
+  Widget _buildCountdownBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.timelapse, color: AppColors.yellow, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Nouvelle grille dans',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+          Text(
+            _countdownText,
+            style: const TextStyle(
+              color: AppColors.yellow,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInfoCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.blue.withOpacity(0.1), AppColors.purple.withOpacity(0.1)],
+          colors: [
+            AppColors.blue.withOpacity(0.1),
+            AppColors.purple.withOpacity(0.1),
+          ],
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.blue.withOpacity(0.3)),
@@ -137,29 +210,45 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
         children: [
           Icon(Icons.info_outline, color: AppColors.blue, size: 24),
           const SizedBox(width: 12),
-          Expanded(
+          const Expanded(
             child: Text(
-              'Chaque tournoi dure 1 semaine. Vous pouvez participer une seule fois par niveau !',
-              style: TextStyle(
-                color: AppColors.gray700,
-                fontSize: 13,
-              ),
+              'Chaque tournoi dure 24h. Tous les joueurs partagent la même grille par niveau !',
+              style: TextStyle(color: AppColors.gray700, fontSize: 13),
             ),
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildTournamentsGrid(TournamentProvider provider) {
-    // Créer 4 cartes pour chaque difficulté
     final difficulties = [
-      {'level': 'Facile', 'difficulty': 'facile', 'color': AppColors.green, 'xp': '50'},
-      {'level': 'Moyen', 'difficulty': 'moyen', 'color': AppColors.blue, 'xp': '100'},
-      {'level': 'Difficile', 'difficulty': 'difficile', 'color': AppColors.orange, 'xp': '150'},
-      {'level': 'Extrême', 'difficulty': 'extreme', 'color': AppColors.red, 'xp': '200'},
+      {
+        'level': 'Facile',
+        'difficulty': 'facile',
+        'color': AppColors.green,
+        'xp': '50',
+      },
+      {
+        'level': 'Moyen',
+        'difficulty': 'moyen',
+        'color': AppColors.blue,
+        'xp': '100',
+      },
+      {
+        'level': 'Difficile',
+        'difficulty': 'difficile',
+        'color': AppColors.orange,
+        'xp': '150',
+      },
+      {
+        'level': 'Extrême',
+        'difficulty': 'extreme',
+        'color': AppColors.red,
+        'xp': '200',
+      },
     ];
-    
+
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -167,14 +256,16 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
         crossAxisCount: 2,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
+        childAspectRatio: 0.82,
       ),
       itemCount: difficulties.length,
       itemBuilder: (context, index) {
         final diff = difficulties[index];
-        final tournament = provider.getTournamentByDifficulty(diff['difficulty'] as String);
-        final hasJoined = tournament != null && provider.hasJoinedTournament(tournament.id);
-        
+        final tournament =
+            provider.getTournamentByDifficulty(diff['difficulty'] as String);
+        final hasJoined =
+            tournament != null && provider.hasJoinedTournament(tournament.id);
+
         return _buildTournamentCard(
           level: diff['level'] as String,
           difficulty: diff['difficulty'] as String,
@@ -187,7 +278,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
       },
     );
   }
-  
+
   Widget _buildTournamentCard({
     required String level,
     required String difficulty,
@@ -198,7 +289,8 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
     required TournamentProvider provider,
   }) {
     return GestureDetector(
-      onTap: () => _handleTournamentTap(tournament, difficulty, hasJoined, provider),
+      onTap: () =>
+          _handleTournamentTap(tournament, difficulty, hasJoined, provider),
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -217,13 +309,11 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
         ),
         child: Stack(
           children: [
-            // Main content
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Trophy icon
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -236,10 +326,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
                       size: 28,
                     ),
                   ),
-                  
                   const Spacer(),
-                  
-                  // Level name
                   Text(
                     level,
                     style: const TextStyle(
@@ -248,10 +335,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
                       color: Colors.white,
                     ),
                   ),
-                  
                   const SizedBox(height: 4),
-                  
-                  // XP
                   Text(
                     '$xp XP',
                     style: TextStyle(
@@ -259,18 +343,11 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
                       color: Colors.white.withOpacity(0.9),
                     ),
                   ),
-                  
                   const SizedBox(height: 8),
-                  
-                  // Participants
-                  if (tournament != null) ...[
+                  if (tournament != null)
                     Row(
                       children: [
-                        Icon(
-                          Icons.people,
-                          size: 14,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
+                        Icon(Icons.people, size: 14, color: Colors.white.withOpacity(0.9)),
                         const SizedBox(width: 4),
                         Text(
                           '${tournament.participants} joueurs',
@@ -281,11 +358,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
                         ),
                       ],
                     ),
-                  ],
-                  
                   const SizedBox(height: 12),
-                  
-                  // Button
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
@@ -293,27 +366,39 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Center(
-                      child: Text(
-                        hasJoined ? 'Jouer' : 'Participer',
-                        style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            hasJoined ? Icons.leaderboard : Icons.emoji_events,
+                            color: color,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            hasJoined ? 'Classement' : 'Participer',
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            
-            // Badge "Inscrit"
+
+            // Badge "✓ Inscrit"
             if (hasJoined)
               Positioned(
                 top: 8,
                 right: 8,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.green,
                     borderRadius: BorderRadius.circular(12),
@@ -333,14 +418,13 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
       ),
     );
   }
-  
+
   Future<void> _handleTournamentTap(
     TournamentModel? tournament,
     String difficulty,
     bool hasJoined,
     TournamentProvider provider,
   ) async {
-    // Si pas de tournoi, afficher message
     if (tournament == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -350,18 +434,17 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
       );
       return;
     }
-    
-    // Si déjà inscrit, aller directement au jeu
+
     if (hasJoined) {
+      // ✅ Déjà inscrit → ouvrir directement le classement
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => TournamentGameScreen(tournament: tournament),
+          builder: (_) => TournamentLeaderboardScreen(tournament: tournament),
         ),
       );
       return;
     }
-    
-    // Sinon, demander confirmation pour participer
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -370,14 +453,14 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Tournoi ${tournament.name}'),
+            Text('Tournoi du jour : ${tournament.name}'),
             const SizedBox(height: 8),
             Text('${tournament.participants} participants'),
             const SizedBox(height: 8),
-            Text('Temps restant: ${tournament.timeRemainingFormatted}'),
+            Text('Temps restant : $_countdownText'),
             const SizedBox(height: 16),
             const Text(
-              '⚠️ Vous ne pourrez participer qu\'une seule fois !',
+              '⚠️ Vous ne pourrez participer qu\'une seule fois par tournoi !',
               style: TextStyle(
                 color: AppColors.red,
                 fontWeight: FontWeight.w500,
@@ -400,16 +483,14 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
         ],
       ),
     );
-    
+
     if (confirmed != true || !mounted) return;
-    
-    // Rejoindre le tournoi
+
     final success = await provider.joinTournament(tournament.id);
-    
+
     if (!mounted) return;
-    
+
     if (success) {
-      // Aller au jeu
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => TournamentGameScreen(tournament: tournament),
@@ -418,7 +499,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('❌ Erreur lors de l\'inscription'),
+          content: Text('❌ Impossible de rejoindre le tournoi. Réessaie.'),
           backgroundColor: AppColors.red,
         ),
       );

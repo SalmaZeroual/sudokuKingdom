@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../../providers/duel_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/sudoku_grid.dart';
 import '../../widgets/number_pad.dart';
+import '../../widgets/share_result_sheet.dart';
+import '../../widgets/achievement_share_card.dart';
 import '../duel/duel_game_screen.dart';
 
 class DuelGameScreen extends StatefulWidget {
@@ -449,7 +452,7 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          duel.player2Name ?? 'En attente...',
+                          duelProvider.opponentName,
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -739,6 +742,29 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
               Navigator.of(context).pop();
             },
             child: const Text('Retour'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              final user = Provider.of<AuthProvider>(context, listen: false).user;
+              ShareResultSheet.show(
+                context,
+                ShareCardData(
+                  type: ShareCardType.duel,
+                  difficulty: 'Moyen',
+                  time: duelProvider.formattedTime,
+                  score: isWinner ? 10000 : 0,
+                  mistakes: duelProvider.myMistakes,
+                  username: user?.username ?? '',
+                  level: user?.level ?? 1,
+                ),
+              );
+            },
+            icon: const Icon(Icons.share_rounded, size: 18),
+            label: const Text('Partager'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.yellow,
+              foregroundColor: Colors.white,
+            ),
           ),
           if (isWinner)
             ElevatedButton(

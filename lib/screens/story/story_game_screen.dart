@@ -92,7 +92,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       // Start grid animation
       _gridAnimController.forward();
       
-      // Start music
+      // ✅ SOUND: démarrer la musique du royaume
       _soundManager.playKingdomMusic(widget.chapter.kingdomId);
       
       // Start game timer
@@ -205,11 +205,19 @@ class _StoryGameScreenState extends State<StoryGameScreen>
     _characterMessageTimer?.cancel();
     _messageAnimController.dispose();
     _gridAnimController.dispose();
+    // ✅ SOUND: arrêter et libérer les ressources audio
     _soundManager.stopMusic();
+    _soundManager.dispose();
     super.dispose();
   }
   
   void _initializeGame(GameProvider gameProvider) {
+    // ✅ Réinitialiser la sélection à chaque nouveau chapitre.
+    // Sans ça, si la cellule sélectionnée du chapitre précédent
+    // n'existe plus (ou est initialCell), les taps étaient ignorés.
+    selectedRow = null;
+    selectedCol = null;
+
     gameProvider.initializeStoryGame(
       widget.chapter.grid!,
       widget.chapter.solution!,
@@ -391,9 +399,13 @@ class _StoryGameScreenState extends State<StoryGameScreen>
             },
           ),
           actions: [
-            // Mute button
+            // ✅ SOUND: bouton mute in-game (respecte le setting global)
             IconButton(
-              icon: Icon(_soundManager.isMuted ? Icons.volume_off : Icons.volume_up),
+              icon: Icon(
+                _soundManager.isMuted ? Icons.volume_off : Icons.volume_up,
+                color: Colors.white,
+              ),
+              tooltip: _soundManager.isMuted ? 'Activer le son' : 'Couper le son',
               onPressed: () {
                 setState(() {
                   _soundManager.toggleMute();

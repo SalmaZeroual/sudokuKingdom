@@ -8,8 +8,11 @@ class UserModel {
   final int wins;
   final int streak;
   final String league;
-  final String? uniqueId; // ✅ AJOUTÉ
-  
+  final String? uniqueId;
+  /// 'id_only'  → trouvable uniquement par ID à 10 chiffres
+  /// 'username' → trouvable aussi par recherche de nom
+  final String discoverability;
+
   UserModel({
     required this.id,
     required this.username,
@@ -20,24 +23,26 @@ class UserModel {
     required this.wins,
     required this.streak,
     required this.league,
-    this.uniqueId, // ✅ AJOUTÉ
+    this.uniqueId,
+    this.discoverability = 'id_only',
   });
-  
+
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id'],
       username: json['username'],
-      email: json['email'],
+      email: json['email'] ?? '',
       xp: json['xp'] ?? 0,
       level: json['level'] ?? 1,
       avatar: json['avatar'],
       wins: json['wins'] ?? 0,
       streak: json['streak'] ?? 0,
       league: json['league'] ?? 'Bronze I',
-      uniqueId: json['unique_id'], // ✅ AJOUTÉ
+      uniqueId: json['unique_id'],
+      discoverability: json['discoverability'] ?? 'id_only',
     );
   }
-  
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -49,10 +54,11 @@ class UserModel {
       'wins': wins,
       'streak': streak,
       'league': league,
-      'unique_id': uniqueId, // ✅ AJOUTÉ
+      'unique_id': uniqueId,
+      'discoverability': discoverability,
     };
   }
-  
+
   String get rank {
     if (level < 5) return 'Apprenti';
     if (level < 10) return 'Écuyer';

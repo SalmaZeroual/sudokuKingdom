@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../../providers/game_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/sudoku_grid.dart';
 import '../../widgets/number_pad.dart';
@@ -556,6 +557,7 @@ class _GameScreenState extends State<GameScreen> {
   
   void _showVictoryDialog() {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
     showDialog(
       context: context,
@@ -644,6 +646,23 @@ class _GameScreenState extends State<GameScreen> {
             },
             child: const Text('Retour à l\'accueil'),
           ),
+          // ✅ GUEST: proposer de créer un compte après la victoire
+          if (authProvider.isGuest)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
+                Navigator.of(context).pushNamed('/login');
+              },
+              icon: const Icon(Icons.person_add, size: 18),
+              label: const Text('Créer un compte'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.yellow,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
           ElevatedButton(
             onPressed: () async {
               await gameProvider.abandonGame();

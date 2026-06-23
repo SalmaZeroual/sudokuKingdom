@@ -49,6 +49,15 @@ class DuelProvider with ChangeNotifier {
   List<DuelInvitation> get pendingInvitations => _pendingInvitations;
   int get pendingInvitationsCount => _pendingInvitations.length;
 
+  /// ✅ Nom de l'adversaire selon qui je suis (player1 ou player2)
+  String get opponentName {
+    if (_currentDuel == null) return 'Adversaire';
+    final isPlayer1 = _currentDuel!.player1Id == _getCurrentUserId();
+    return isPlayer1
+        ? (_currentDuel!.player2Name ?? 'Adversaire')
+        : (_currentDuel!.player1Name ?? 'Adversaire');
+  }
+
   String get formattedTime {
     final minutes = (_elapsedSeconds ~/ 60).toString().padLeft(2, '0');
     final seconds = (_elapsedSeconds % 60).toString().padLeft(2, '0');
@@ -173,15 +182,25 @@ class DuelProvider with ChangeNotifier {
 
   Future<bool> acceptDuelInvitation(int invitationId) async {
     try {
-      print('📤 Accepting invitation $invitationId...');
+      _isSearching = true;
+      notifyListeners();
+
+      // ✅ Connecter le socket et enregistrer les listeners AVANT d'accepter
+      _socketService.connect();
+      _setupSocketListeners();
+
       final response = await _apiService.post('/duel/invitations/$invitationId/accept', {});
-      print('📥 Response from accept: $response');
-      
       _pendingInvitations.removeWhere((inv) => inv.id == invitationId);
-      _handleDuelFound(response is Map<String, dynamic> ? response : {});
+
+      if (response is Map<String, dynamic> && response.isNotEmpty) {
+        _handleDuelFound(response);
+      }
+
       notifyListeners();
       return true;
     } catch (e) {
+      _isSearching = false;
+      notifyListeners();
       print('❌ Error accepting duel invitation: $e');
       return false;
     }
@@ -198,6 +217,22 @@ class DuelProvider with ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════
+  // SOCKET LISTENERS (centralisés)
+  // ══════════════════════════════════════════════
+
+  /// ✅ Enregistre tous les listeners socket du duel.
+  /// Appelé aussi bien lors d'un matchmaking que d'une invitation,
+  /// pour que les deux joueurs reçoivent bien les événements de progression.
+  void _setupSocketListeners() {
+    _socketService.on('duel_found',            (data) => _handleDuelFound(data));
+    _socketService.on('opponent_progress',     (data) => _handleOpponentProgress(data));
+    _socketService.on('duel_finished',         (data) => _handleDuelFinished(data));
+    _socketService.on('opponent_disconnected', (data) => _handleOpponentDisconnected());
+    _socketService.on('duel_message',          (data) => _handleDuelMessage(data));
+    _socketService.on('opponent_eliminated',   (data) => _handleOpponentEliminated());
+  }
+
+  // ══════════════════════════════════════════════
   // SEARCH & MATCHMAKING
   // ══════════════════════════════════════════════
 
@@ -208,13 +243,8 @@ class DuelProvider with ChangeNotifier {
     try {
       final userId = await loadUserId();
       _socketService.connect();
+      _setupSocketListeners();
       _socketService.emit('search_duel', {'difficulty': difficulty, 'userId': userId});
-      _socketService.on('duel_found', (data) => _handleDuelFound(data));
-      _socketService.on('opponent_progress', (data) => _handleOpponentProgress(data));
-      _socketService.on('duel_finished', (data) => _handleDuelFinished(data));
-      _socketService.on('opponent_disconnected', (data) => _handleOpponentDisconnected());
-      _socketService.on('duel_message', (data) => _handleDuelMessage(data));
-      _socketService.on('opponent_eliminated', (data) => _handleOpponentEliminated());
     } catch (e) {
       _isSearching = false;
       notifyListeners();
@@ -234,12 +264,15 @@ class DuelProvider with ChangeNotifier {
     try {
       _isSearching = true;
       notifyListeners();
+      // ✅ Connecter le socket et écouter 'duel_accepted' AVANT d'envoyer le défi
+      _socketService.connect();
+      _setupSocketListeners();
       await _apiService.post('/duel/challenge', {'friend_id': friendId, 'difficulty': difficulty});
       print('✅ Invitation sent to friend $friendId');
-      _isSearching = false;
-      notifyListeners();
+      // On reste en isSearching=true jusqu'à réception de duel_accepted
     } catch (e) {
       _isSearching = false;
+      _socketService.disconnect();
       notifyListeners();
       print('Error challenging friend: $e');
       rethrow;
@@ -251,16 +284,9 @@ class DuelProvider with ChangeNotifier {
   // ══════════════════════════════════════════════
 
   void _handleDuelFound(Map<String, dynamic> data) {
-    print('🔍 DEBUG: _handleDuelFound called with: $data');
-    if (data.isEmpty) {
-      print('⚠️ WARNING: Empty data in _handleDuelFound');
-      return;
-    }
-    
+    if (data.isEmpty) return;
     try {
       _currentDuel = DuelModel.fromJson(data);
-      print('✅ Duel model created: ${_currentDuel!.id}');
-      
       _playerGrid = _currentDuel!.grid.map((row) => List<int>.from(row)).toList();
       _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentDuel!.grid[i][j] != 0));
       _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
@@ -271,21 +297,42 @@ class DuelProvider with ChangeNotifier {
       _myMistakes = 0;
       _messages.clear();
       _startTimer();
-      
-      print('✅ Duel state initialized, isDuelActive: $_isDuelActive');
+
+      // ✅ Informer le backend de notre socket pour ce duel.
+      // Sans cela, activeDuels reste vide pour les duels par invitation
+      // et 'update_progress' est ignoré côté serveur.
+      _socketService.emit('register_duel', {
+        'duel_id': _currentDuel!.id,
+        'player1_id': _currentDuel!.player1Id,
+        'player2_id': _currentDuel!.player2Id,
+      });
+
+      print('✅ Duel ${_currentDuel!.id} started, register_duel emitted');
       notifyListeners();
     } catch (e) {
       print('❌ Error in _handleDuelFound: $e');
-      print('   Data was: $data');
     }
   }
 
+  /// ✅ Bug corrigé : avant, on mettait TOUJOURS à jour player2.
+  /// Pour player2 (Yahya), l'adversaire est player1 (Salma) → il faut
+  /// mettre à jour player1Progress/Mistakes, pas player2.
   void _handleOpponentProgress(Map<String, dynamic> data) {
     if (_currentDuel == null) return;
-    _currentDuel = _currentDuel!.copyWith(
-      player2Progress: data['progress'],
-      player2Mistakes: data['mistakes'],
-    );
+    final isPlayer1 = _currentDuel!.player1Id == _getCurrentUserId();
+    if (isPlayer1) {
+      // Je suis player1 → l'adversaire est player2
+      _currentDuel = _currentDuel!.copyWith(
+        player2Progress: data['progress'],
+        player2Mistakes: data['mistakes'],
+      );
+    } else {
+      // Je suis player2 → l'adversaire est player1
+      _currentDuel = _currentDuel!.copyWith(
+        player1Progress: data['progress'],
+        player1Mistakes: data['mistakes'],
+      );
+    }
     notifyListeners();
   }
 
@@ -468,7 +515,11 @@ class DuelProvider with ChangeNotifier {
 // ══════════════════════════════════════════════
 
 extension DuelModelExtension on DuelModel {
+  /// ✅ Supporte maintenant player1Progress/Mistakes (nécessaire pour player2
+  /// qui reçoit la progression de player1 comme adversaire).
   DuelModel copyWith({
+    int? player1Progress,
+    int? player1Mistakes,
     int? player2Progress,
     int? player2Mistakes,
     int? winnerId,
@@ -486,9 +537,9 @@ extension DuelModelExtension on DuelModel {
       winnerId: winnerId ?? this.winnerId,
       status: status ?? this.status,
       createdAt: createdAt,
-      player1Progress: player1Progress,
+      player1Progress: player1Progress ?? this.player1Progress,
       player2Progress: player2Progress ?? this.player2Progress,
-      player1Mistakes: player1Mistakes,
+      player1Mistakes: player1Mistakes ?? this.player1Mistakes,
       player2Mistakes: player2Mistakes ?? this.player2Mistakes,
     );
   }

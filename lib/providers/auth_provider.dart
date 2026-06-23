@@ -17,6 +17,9 @@ class AuthProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _token != null && _user != null;
+  
+  // ✅ GUEST: true si l'utilisateur joue sans compte
+  bool get isGuest => !isAuthenticated;
 
   final ApiService apiService = ApiService();
   final SocketService _socketService = SocketService();

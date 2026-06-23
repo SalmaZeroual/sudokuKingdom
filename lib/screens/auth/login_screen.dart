@@ -20,9 +20,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
-  bool _showFullForm = false; // true = formulaire complet, false = account switcher
+  bool _showFullForm = false;
+  bool _isLoadingAccounts = true; // ✅ FIX: évite le flash avant chargement
   List<SavedAccount> _savedAccounts = [];
-  SavedAccount? _selectedAccount; // compte sélectionné pour connexion rapide
+  SavedAccount? _selectedAccount;
 
   @override
   void initState() {
@@ -33,11 +34,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loadSavedAccounts() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final accounts = await authProvider.getSavedAccounts();
-    setState(() {
-      _savedAccounts = accounts;
-      // Si aucun compte sauvegardé → aller directement au formulaire complet
-      _showFullForm = accounts.isEmpty;
-    });
+    if (mounted) {
+      setState(() {
+        _savedAccounts = accounts;
+        _showFullForm = accounts.isEmpty;
+        _isLoadingAccounts = false; // ✅ FIX: chargement terminé
+      });
+    }
   }
 
   @override
@@ -249,8 +252,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 40),
 
-              // ── Account Switcher OU Formulaire complet ──
-              if (!_showFullForm && _savedAccounts.isNotEmpty)
+              // ✅ FIX: attendre la fin du chargement avant d'afficher
+              if (_isLoadingAccounts)
+                const Center(child: CircularProgressIndicator())
+              else if (!_showFullForm && _savedAccounts.isNotEmpty)
                 _buildAccountSwitcher()
               else
                 _buildFullForm(),

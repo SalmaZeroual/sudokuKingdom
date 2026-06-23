@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
-import '../services/account_storage_service.dart'; // ✅ AJOUTÉ
+import '../services/account_storage_service.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../widgets/avatar_widget.dart';
+import '../utils/story_sound_manager.dart';
 import 'avatar_selection_screen.dart';
 import 'tutorial/tutorial_settings_screen.dart';
 import 'privacy_policy_screen.dart';
@@ -266,6 +267,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (value) {
               setState(() => _soundEnabled = value);
               _saveSetting('sound_enabled', value);
+              // ✅ SOUND: appliquer immédiatement si le jeu story est ouvert
+              if (!value) {
+                StorySoundManager().setMuted(true);
+              } else if (_soundEnabled) {
+                StorySoundManager().setMuted(false);
+              }
             },
           ),
 
@@ -277,6 +284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (value) {
               setState(() => _vibrationsEnabled = value);
               _saveSetting('vibrations_enabled', value);
+              // ✅ SOUND: la préférence est lue dynamiquement par StorySoundManager
             },
           ),
 
