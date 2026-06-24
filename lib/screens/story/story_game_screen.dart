@@ -421,6 +421,15 @@ class _StoryGameScreenState extends State<StoryGameScreen>
               },
               tooltip: gameProvider.isNoteMode ? 'Mode notes activé' : 'Activer mode notes',
             ),
+            // ✅ Bouton pause — même comportement que le jeu classique
+            IconButton(
+              icon: const Icon(Icons.pause),
+              tooltip: 'Pause',
+              onPressed: () {
+                gameProvider.pauseGame();
+                _showPauseDialog(context, gameProvider);
+              },
+            ),
           ],
         ),
         body: Stack(
@@ -662,6 +671,27 @@ class _StoryGameScreenState extends State<StoryGameScreen>
     );
   }
   
+  // ✅ Dialog pause — identique au jeu classique
+  void _showPauseDialog(BuildContext context, GameProvider gameProvider) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Pause'),
+        content: const Text('La partie est en pause.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              gameProvider.resumeGame();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Reprendre'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool?> _showExitDialog(BuildContext context) {
     return showDialog<bool>(
       context: context,

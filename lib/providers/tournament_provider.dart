@@ -9,6 +9,7 @@ class TournamentProvider with ChangeNotifier {
   List<TournamentParticipation> _leaderboard = [];
   List<TournamentParticipation> _friendsLeaderboard = [];
   Set<int> _joinedTournamentIds = {};
+  Set<int> _finishedTournamentIds = {};
 
   bool _isLoading = false;
   bool _isLeaderboardLoading = false;
@@ -47,6 +48,9 @@ class TournamentProvider with ChangeNotifier {
 
   bool hasJoinedTournament(int tournamentId) =>
       _joinedTournamentIds.contains(tournamentId);
+
+  bool hasFinishedTournament(int tournamentId) =>
+      _finishedTournamentIds.contains(tournamentId);
 
   List<TournamentParticipation> getTop3() =>
       leaderboard.length >= 3 ? leaderboard.take(3).toList() : leaderboard;
@@ -119,6 +123,9 @@ class TournamentProvider with ChangeNotifier {
       for (final t in _tournaments) {
         if (t.userHasJoined) {
           _joinedTournamentIds.add(t.id);
+        }
+        if (t.userHasFinished) {
+          _finishedTournamentIds.add(t.id);
         }
       }
       await _saveJoinedTournaments();
@@ -212,7 +219,10 @@ class TournamentProvider with ChangeNotifier {
         'score': score,
         'time': time,
       });
+      // ✅ Marquer comme terminé localement
+      _finishedTournamentIds.add(tournamentId);
       await loadLeaderboard(tournamentId);
+      await loadTournaments();
       return true;
     } catch (e) {
       debugPrint('Error submitting score: $e');

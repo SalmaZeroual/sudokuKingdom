@@ -10,6 +10,7 @@ import 'friend_profile_screen.dart';
 import 'add_friend_screen.dart';
 import '../chat/chat_screen.dart';
 import '../duel/duel_game_screen.dart';
+import '../duel/duel_search_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({Key? key}) : super(key: key);
@@ -994,14 +995,15 @@ class _FriendCard extends StatelessWidget {
       await duelProvider.challengeFriend(friend.id, difficulty);
 
       if (context.mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ Invitation envoyée à ${friend.username} ! En attente de sa réponse.',
+        Navigator.of(context).pop(); // fermer le dialog de sélection de difficulté
+        // ✅ Naviguer vers l'écran d'attente (mode invitation) qui poll isDuelActive
+        // et naviguera vers DuelGameScreen automatiquement quand l'ami accepte.
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DuelSearchScreen(
+              difficulty: difficulty,
+              isInvitation: true,
             ),
-            backgroundColor: AppColors.green,
-            duration: const Duration(seconds: 4),
           ),
         );
       }

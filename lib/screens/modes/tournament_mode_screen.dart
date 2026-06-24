@@ -265,6 +265,8 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
             provider.getTournamentByDifficulty(diff['difficulty'] as String);
         final hasJoined =
             tournament != null && provider.hasJoinedTournament(tournament.id);
+        final hasFinished =
+            tournament != null && provider.hasFinishedTournament(tournament.id);
 
         return _buildTournamentCard(
           level: diff['level'] as String,
@@ -273,6 +275,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
           xp: diff['xp'] as String,
           tournament: tournament,
           hasJoined: hasJoined,
+          hasFinished: hasFinished,
           provider: provider,
         );
       },
@@ -286,11 +289,12 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
     required String xp,
     required TournamentModel? tournament,
     required bool hasJoined,
+    required bool hasFinished,
     required TournamentProvider provider,
   }) {
     return GestureDetector(
       onTap: () =>
-          _handleTournamentTap(tournament, difficulty, hasJoined, provider),
+          _handleTournamentTap(tournament, difficulty, hasJoined, hasFinished, provider),
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -370,13 +374,21 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            hasJoined ? Icons.leaderboard : Icons.emoji_events,
+                            hasFinished
+                                ? Icons.leaderboard
+                                : hasJoined
+                                    ? Icons.play_arrow
+                                    : Icons.emoji_events,
                             color: color,
                             size: 14,
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            hasJoined ? 'Classement' : 'Participer',
+                            hasFinished
+                                ? 'Classement'
+                                : hasJoined
+                                    ? 'Continuer'
+                                    : 'Participer',
                             style: TextStyle(
                               color: color,
                               fontWeight: FontWeight.bold,
@@ -423,6 +435,7 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
     TournamentModel? tournament,
     String difficulty,
     bool hasJoined,
+    bool hasFinished,
     TournamentProvider provider,
   ) async {
     if (tournament == null) {
@@ -435,11 +448,21 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
       return;
     }
 
-    if (hasJoined) {
-      // ✅ Déjà inscrit → ouvrir directement le classement
+    // ✅ Terminé → Classement
+    if (hasFinished) {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => TournamentLeaderboardScreen(tournament: tournament),
+        ),
+      );
+      return;
+    }
+
+    // ✅ Rejoint mais pas terminé → Continuer la partie
+    if (hasJoined) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TournamentGameScreen(tournament: tournament),
         ),
       );
       return;

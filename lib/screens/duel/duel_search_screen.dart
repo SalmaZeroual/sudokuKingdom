@@ -7,32 +7,40 @@ import 'duel_game_screen.dart';
 
 class DuelSearchScreen extends StatefulWidget {
   final String difficulty;
-  
+  /// Si true : on attend l'acceptation d'une invitation déjà envoyée.
+  /// On ne relance PAS searchForOpponent (le socket est déjà connecté).
+  final bool isInvitation;
+
   const DuelSearchScreen({
     Key? key,
     required this.difficulty,
+    this.isInvitation = false,
   }) : super(key: key);
 
   @override
   State<DuelSearchScreen> createState() => _DuelSearchScreenState();
 }
 
-class _DuelSearchScreenState extends State<DuelSearchScreen> 
+class _DuelSearchScreenState extends State<DuelSearchScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
-  
+
   @override
   void initState() {
     super.initState();
-    
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
-    
-    // Start searching
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startSearch();
+      if (widget.isInvitation) {
+        // ✅ Invitation déjà envoyée — juste attendre l'acceptation
+        _listenForDuel();
+      } else {
+        _startSearch();
+      }
     });
   }
   
@@ -229,7 +237,7 @@ class _DuelSearchScreenState extends State<DuelSearchScreen>
                         ),
                       ),
                       
-                      const SizedBox(height: 48),
+                      const SizedBox(height: 32),
                       
                       // Animated dots
                       AnimatedBuilder(
@@ -259,12 +267,12 @@ class _DuelSearchScreenState extends State<DuelSearchScreen>
                         },
                       ),
                       
-                      const SizedBox(height: 48),
+                      const SizedBox(height: 32),
                       
                       // Tips
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 32),
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(16),
@@ -298,7 +306,7 @@ class _DuelSearchScreenState extends State<DuelSearchScreen>
                 
                 // Cancel button
                 Padding(
-                  padding: const EdgeInsets.all(32),
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                   child: ElevatedButton(
                     onPressed: () {
                       final duelProvider = Provider.of<DuelProvider>(

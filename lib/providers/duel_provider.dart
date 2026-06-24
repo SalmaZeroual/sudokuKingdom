@@ -140,31 +140,17 @@ class DuelProvider with ChangeNotifier {
   }
 
   void _handleDuelAccepted(Map<String, dynamic> data) {
-    print('🔍 DEBUG: Received duel_accepted data: $data');
-    print('🔍 DEBUG: data type: ${data.runtimeType}');
-    print('🔍 DEBUG: data keys: ${data.keys}');
-    
     final userId = _getCurrentUserId();
-    print('🔍 DEBUG: Current userId: $userId');
-    print('🔍 DEBUG: data[\'player1_id\']: ${data['player1_id']}');
-    print('🔍 DEBUG: data[\'player2_id\']: ${data['player2_id']}');
-    print('🔍 DEBUG: data[\'duel\']: ${data['duel']}');
-    
-    if (data['player1_id'] == userId || data['player2_id'] == userId) {
-      print('✅ Duel accepted! Starting game...');
-      print('🔍 DEBUG: About to call _handleDuelFound with: ${data['duel']}');
-      _handleDuelFound(data['duel']);
-      
-      if (_onDuelAcceptedCallback != null) {
-        print('🔍 DEBUG: Calling navigation callback');
-        _onDuelAcceptedCallback!();
-      } else {
-        print('⚠️ WARNING: No navigation callback set!');
+
+    // Comparer en int (les IDs peuvent arriver comme int ou String selon le transport)
+    final p1 = int.tryParse(data['player1_id'].toString()) ?? -1;
+    final p2 = int.tryParse(data['player2_id'].toString()) ?? -1;
+
+    if (userId == p1 || userId == p2) {
+      final duelData = data['duel'];
+      if (duelData is Map<String, dynamic>) {
+        _handleDuelFound(duelData);
       }
-    } else {
-      print('❌ User ID mismatch - ignoring event');
-      print('   Expected: $userId');
-      print('   Got player1_id: ${data['player1_id']}, player2_id: ${data['player2_id']}');
     }
   }
 
@@ -225,6 +211,9 @@ class DuelProvider with ChangeNotifier {
   /// pour que les deux joueurs reçoivent bien les événements de progression.
   void _setupSocketListeners() {
     _socketService.on('duel_found',            (data) => _handleDuelFound(data));
+    // ✅ Bug corrigé : duel_accepted manquait → l'inviteur ne recevait jamais la grille.
+    // L'événement est envoyé par le serveur quand l'adversaire accepte l'invitation.
+    _socketService.on('duel_accepted',         (data) => _handleDuelAccepted(data));
     _socketService.on('opponent_progress',     (data) => _handleOpponentProgress(data));
     _socketService.on('duel_finished',         (data) => _handleDuelFinished(data));
     _socketService.on('opponent_disconnected', (data) => _handleOpponentDisconnected());

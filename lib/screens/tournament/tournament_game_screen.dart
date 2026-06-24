@@ -3,8 +3,10 @@
 // ============================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/tournament_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/sudoku_grid.dart';
@@ -36,6 +38,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
   Timer? _gameTimer;
   Timer? _leaderboardTimer;
   int _elapsedSeconds = 0;
+  bool _isPaused = false;
   int _mistakes = 0;
   bool _isCompleted = false;
 
@@ -49,6 +52,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
   void initState() {
     super.initState();
 
+    // Initialiser avec la grille originale par défaut
     _playerGrid = widget.tournament.grid
         .map((row) => List<int>.from(row))
         .toList();
@@ -58,6 +62,9 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
     );
     _errorCells = List.generate(9, (_) => List.generate(9, (_) => false));
     _notes = List.generate(9, (_) => List.generate(9, (_) => <int>{}));
+
+    // ✅ Restaurer la progression sauvegardée (si elle existe)
+    _loadSavedProgress();
 
     _startGameTimer();
 
@@ -86,7 +93,7 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
   void _startGameTimer() {
     _gameTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() => _elapsedSeconds++);
+      if (!_isPaused) setState(() => _elapsedSeconds++);
     });
   }
 
@@ -147,6 +154,9 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
     await provider.submitScore(
         widget.tournament.id, finalScore, _elapsedSeconds);
 
+    // ✅ Supprimer la sauvegarde locale — partie terminée
+    await _clearProgress();
+
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -184,12 +194,10 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
         appBar: AppBar(
           title: Text(widget.tournament.name),
           actions: [
-            // ✅ Bouton classement dans l'appbar — ouvre un panel modal,
-            // ne partage PLUS l'écran en deux (bug image 5)
             IconButton(
-              icon: const Icon(Icons.leaderboard),
-              tooltip: 'Voir le classement',
-              onPressed: () => _showLeaderboardSheet(context, provider),
+              icon: const Icon(Icons.pause),
+              tooltip: 'Pause',
+              onPressed: () => _showPauseDialog(context),
             ),
           ],
         ),
@@ -513,6 +521,80 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
     );
   }
 
+  // ── Sauvegarde locale de la progression ──────────────────────────────
+  // Clé : tournament_progress_{id} dans SharedPreferences
+  // Stocke la grille en cours + le temps écoulé sous forme JSON.
+
+  String get _progressKey => 'tournament_progress_${widget.tournament.id}';
+
+  /// Charge la grille et le temps sauvegardés lors du dernier "Quitter".
+  Future<void> _loadSavedProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_progressKey);
+      if (raw == null) return;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+
+      final savedGrid = (data['grid'] as List)
+          .map((row) => List<int>.from(row as List))
+          .toList();
+      final savedSeconds = data['seconds'] as int? ?? 0;
+
+      if (mounted) {
+        setState(() {
+          _playerGrid = savedGrid;
+          _elapsedSeconds = savedSeconds;
+        });
+      }
+    } catch (_) {
+      // Données corrompues → ignorer, partir de zéro
+    }
+  }
+
+  /// Sauvegarde la grille et le temps dans SharedPreferences.
+  Future<void> _saveProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = {
+        'grid': _playerGrid,
+        'seconds': _elapsedSeconds,
+      };
+      await prefs.setString(_progressKey, jsonEncode(data));
+    } catch (_) {}
+  }
+
+  /// Supprime la sauvegarde une fois la partie terminée.
+  Future<void> _clearProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_progressKey);
+    } catch (_) {}
+  }
+
+  // ✅ Dialog pause — identique au jeu classique
+  void _showPauseDialog(BuildContext context) {
+    final provider = Provider.of<TournamentProvider>(context, listen: false);
+    // Pause the local timer
+    setState(() => _isPaused = true);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pause'),
+        content: const Text('La partie est en pause.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() => _isPaused = false);
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Reprendre'),
+          ),
+        ],
+      ),
+    ).then((_) => setState(() => _isPaused = false));
+  }
+
   Future<bool?> _showExitDialog() {
     return showDialog<bool>(
       context: context,
@@ -524,11 +606,8 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
             Text('Quitter le tournoi ?'),
           ],
         ),
-        // ✅ Message mis à jour : la progression est sauvegardée et
-        // le joueur peut reprendre plus tard (le score 0 disparaît
-        // du classement tant qu'il n'a pas soumis un vrai score).
         content: const Text(
-          'Votre partie sera sauvegardée. Vous pourrez reprendre le tournoi depuis l\'écran principal.',
+          'Votre progression sera sauvegardée. Vous pourrez reprendre depuis où vous vous êtes arrêté.',
         ),
         actions: [
           TextButton(
@@ -542,7 +621,12 @@ class _TournamentGameScreenState extends State<TournamentGameScreen>
           ),
         ],
       ),
-    );
+    ).then((confirmed) async {
+      if (confirmed == true) {
+        await _saveProgress(); // ✅ sauvegarder avant de partir
+      }
+      return confirmed;
+    });
   }
 }
 

@@ -15,6 +15,7 @@ class AddFriendScreen extends StatefulWidget {
 
 class _AddFriendScreenState extends State<AddFriendScreen> {
   final TextEditingController _searchController = TextEditingController();
+  bool _searchByName = false; // false = par ID, true = par nom
 
   @override
   void dispose() {
@@ -27,13 +28,32 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
 
     if (value.isEmpty) {
       friendsProvider.clearSearch();
-    } else if (value.length == 10 && RegExp(r'^\d{10}$').hasMatch(value)) {
-      // ✅ Recherche uniquement si exactement 10 chiffres
-      friendsProvider.searchUsers(value);
-    } else {
-      // ✅ Effacer les résultats si ce n'est pas 10 chiffres
-      friendsProvider.clearSearch();
+      return;
     }
+
+    if (_searchByName) {
+      // Recherche par nom : déclencher dès 2 caractères
+      if (value.length >= 2) {
+        friendsProvider.searchUsers(value);
+      } else {
+        friendsProvider.clearSearch();
+      }
+    } else {
+      // Recherche par ID : seulement si exactement 10 chiffres
+      if (value.length == 10 && RegExp(r'^\d{10}$').hasMatch(value)) {
+        friendsProvider.searchUsers(value);
+      } else {
+        friendsProvider.clearSearch();
+      }
+    }
+  }
+
+  void _switchMode(bool byName) {
+    setState(() {
+      _searchByName = byName;
+      _searchController.clear();
+    });
+    Provider.of<FriendsProvider>(context, listen: false).clearSearch();
   }
 
   @override
@@ -46,7 +66,76 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
       ),
       body: Column(
         children: [
-          // ✅ Search bar pour ID à 10 chiffres
+          // ── Toggle ID / Nom ────────────────────────────────────────
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            decoration: BoxDecoration(
+              color: AppColors.gray100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _switchMode(false),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: !_searchByName ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: !_searchByName ? [
+                          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4),
+                        ] : [],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.badge, size: 16,
+                              color: !_searchByName ? AppColors.blue : AppColors.gray500),
+                          const SizedBox(width: 6),
+                          Text('Par ID', style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: !_searchByName ? AppColors.blue : AppColors.gray500,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _switchMode(true),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _searchByName ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: _searchByName ? [
+                          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4),
+                        ] : [],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.person_search, size: 16,
+                              color: _searchByName ? AppColors.blue : AppColors.gray500),
+                          const SizedBox(width: 6),
+                          Text('Par nom', style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: _searchByName ? AppColors.blue : AppColors.gray500,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ✅ Search bar — adapts to mode
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -65,14 +154,19 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 TextField(
                   controller: _searchController,
                   onChanged: _onSearchChanged,
-                  keyboardType: TextInputType.number, // ✅ Clavier numérique
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly, // ✅ Chiffres uniquement
-                    LengthLimitingTextInputFormatter(10), // ✅ Max 10 caractères
+                  keyboardType: _searchByName ? TextInputType.text : TextInputType.number,
+                  inputFormatters: _searchByName ? [] : [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
                   ],
                   decoration: InputDecoration(
-                    hintText: 'Entrez l\'ID à 10 chiffres...', // ✅ Texte modifié
-                    prefixIcon: Icon(Icons.badge, color: AppColors.blue),
+                    hintText: _searchByName
+                        ? 'Rechercher par nom d\'utilisateur...'
+                        : 'Entrez l\'ID à 10 chiffres...',
+                    prefixIcon: Icon(
+                      _searchByName ? Icons.person_search : Icons.badge,
+                      color: AppColors.blue,
+                    ),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: Icon(Icons.clear, color: AppColors.gray500),
@@ -97,12 +191,18 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 const SizedBox(height: 8),
                 // ✅ Indicateur du nombre de chiffres
                 Text(
-                  '${_searchController.text.length}/10 chiffres',
+                  _searchByName
+                      ? (_searchController.text.length >= 2
+                          ? 'Recherche en cours...'
+                          : 'Tapez au moins 2 caractères')
+                      : '${_searchController.text.length}/10 chiffres',
                   style: TextStyle(
                     fontSize: 12,
-                    color: _searchController.text.length == 10 
-                        ? AppColors.green 
-                        : AppColors.gray500,
+                    color: _searchByName
+                        ? AppColors.gray500
+                        : (_searchController.text.length == 10
+                            ? AppColors.green
+                            : AppColors.gray500),
                   ),
                 ),
               ],
@@ -123,12 +223,18 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_searchController.text.isEmpty) {
+    final text = _searchController.text;
+
+    if (text.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.badge, size: 80, color: AppColors.blue.withOpacity(0.3)),
+            Icon(
+              _searchByName ? Icons.person_search : Icons.badge,
+              size: 80,
+              color: AppColors.blue.withOpacity(0.3),
+            ),
             const SizedBox(height: 16),
             Text(
               'Recherchez un ami',
@@ -140,11 +246,12 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Entrez l\'ID à 10 chiffres',
+              _searchByName
+                  ? 'Tapez un nom d\'utilisateur'
+                  : 'Entrez l\'ID à 10 chiffres',
               style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
             const SizedBox(height: 24),
-            // ✅ Carte d'explication
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 32),
               padding: const EdgeInsets.all(16),
@@ -153,17 +260,20 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.blue.withOpacity(0.3)),
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: AppColors.blue, size: 24),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Chaque utilisateur possède un ID unique à 10 chiffres visible dans son profil.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.gray700,
-                      height: 1.4,
+                  Icon(Icons.info_outline, color: AppColors.blue, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _searchByName
+                          ? 'Seuls les utilisateurs ayant activé "Par nom" dans leur profil apparaîtront.'
+                          : 'Chaque utilisateur possède un ID unique à 10 chiffres visible dans son profil.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.gray700,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                 ],
@@ -174,8 +284,8 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
       );
     }
 
-    // ✅ Message si moins de 10 chiffres
-    if (_searchController.text.length < 10) {
+    // Mode ID : attendre 10 chiffres
+    if (!_searchByName && text.length < 10) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -192,7 +302,33 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'L\'ID doit contenir exactement 10 chiffres',
+              'L\'ID doit contenir exactement 10 chiffres (${text.length}/10)',
+              style: TextStyle(fontSize: 14, color: AppColors.gray400),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Mode nom : attendre 2 caractères
+    if (_searchByName && text.length < 2) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_search, size: 80, color: AppColors.blue.withOpacity(0.2)),
+            const SizedBox(height: 16),
+            Text(
+              'Continuez à taper...',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: AppColors.gray500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tapez au moins 2 caractères',
               style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
           ],
@@ -217,7 +353,9 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Vérifiez l\'ID à 10 chiffres',
+              _searchByName
+                  ? 'Personne avec ce nom n\'a activé la recherche par nom'
+                  : 'Vérifiez l\'ID à 10 chiffres',
               style: TextStyle(fontSize: 14, color: AppColors.gray400),
             ),
           ],

@@ -13,8 +13,9 @@ class TournamentModel {
   final String status;
   final int participants;
   /// Vrai si l'utilisateur connecté a déjà rejoint ce tournoi aujourd'hui.
-  /// Renvoyé par le backend quand le token est envoyé avec /tournament/list.
   final bool userHasJoined;
+  /// Vrai si le joueur a soumis un score (partie terminée, score > 0).
+  final bool userHasFinished;
 
   TournamentModel({
     required this.id,
@@ -27,6 +28,7 @@ class TournamentModel {
     required this.status,
     required this.participants,
     this.userHasJoined = false,
+    this.userHasFinished = false,
   });
 
   factory TournamentModel.fromJson(Map<String, dynamic> json) {
@@ -45,6 +47,7 @@ class TournamentModel {
       status: json['status'],
       participants: json['participants'] ?? 0,
       userHasJoined: json['user_has_joined'] == true,
+      userHasFinished: json['user_has_finished'] == true,
     );
   }
 
