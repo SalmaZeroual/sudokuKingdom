@@ -12,6 +12,8 @@ class UserModel {
   /// 'id_only'  → trouvable uniquement par ID à 10 chiffres
   /// 'username' → trouvable aussi par recherche de nom
   final String discoverability;
+  // ✅ NOUVEAU : si false, personne (même un ami) ne peut envoyer de message.
+  final bool acceptsMessages;
 
   UserModel({
     required this.id,
@@ -25,6 +27,7 @@ class UserModel {
     required this.league,
     this.uniqueId,
     this.discoverability = 'id_only',
+    this.acceptsMessages = true,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -40,6 +43,9 @@ class UserModel {
       league: json['league'] ?? 'Bronze I',
       uniqueId: json['unique_id'],
       discoverability: json['discoverability'] ?? 'id_only',
+      acceptsMessages: json['accepts_messages'] == null
+          ? true
+          : (json['accepts_messages'] == 1 || json['accepts_messages'] == true),
     );
   }
 
@@ -56,6 +62,7 @@ class UserModel {
       'league': league,
       'unique_id': uniqueId,
       'discoverability': discoverability,
+      'accepts_messages': acceptsMessages,
     };
   }
 

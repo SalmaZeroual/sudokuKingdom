@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
+import '../providers/game_provider.dart';
 import 'tutorial/tutorial_screen.dart';
 // Importez vos services ici
 import '../services/notification_service.dart';
@@ -14,41 +15,44 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
-  
+
   @override
   void initState() {
     super.initState();
-    
+
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
-    
+
     _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeIn),
     );
-    
+
     _controller.forward();
-    
+
     // On lance la séquence d'initialisation
     _initializeApp();
   }
-  
+
   Future<void> _initializeApp() async {
     // 1. Initialiser les services en arrière-plan
     try {
       await NotificationService.instance.init();
-      await NotificationService.instance.requestPermissions(); // Demande ici après le démarrage
+      await NotificationService.instance
+          .requestPermissions(); // Demande ici après le démarrage
       NotificationService.instance.scheduleDailyTournamentNotification();
       OfflineService.instance.startListening();
+      await Provider.of<GameProvider>(context, listen: false).loadSavedGame();
     } catch (e) {
       debugPrint("Erreur init services: $e");
     }
@@ -56,17 +60,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     // 2. Vérifier l'authentification
     await _checkAuthAndTutorial();
   }
-  
+
   Future<void> _checkAuthAndTutorial() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     await authProvider.checkAuthStatus();
-    
-    await Future.delayed(const Duration(seconds: 1)); // Temps pour finir les anims
-    
+
+    await Future.delayed(
+        const Duration(seconds: 1)); // Temps pour finir les anims
+
     if (mounted) {
       final prefs = await SharedPreferences.getInstance();
       final tutorialCompleted = prefs.getBool('tutorial_completed') ?? false;
-      
+
       if (!tutorialCompleted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const TutorialScreen()),
@@ -76,13 +81,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       }
     }
   }
-  
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
-  
+
   // ... (votre méthode build reste inchangée) ...
   @override
   Widget build(BuildContext context) {

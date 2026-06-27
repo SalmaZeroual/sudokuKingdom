@@ -13,6 +13,10 @@ class TournamentProvider with ChangeNotifier {
 
   bool _isLoading = false;
   bool _isLeaderboardLoading = false;
+  // ✅ NOUVEAU : le Tournoi reste une fonctionnalité en ligne uniquement
+  // (classement en temps réel), mais avant, une coupure réseau laissait
+  // l'écran silencieusement bloqué sans aucune explication.
+  bool _isOffline = false;
 
   // Type de classement affiché : 'global' ou 'friends'
   String _leaderboardType = 'global';
@@ -24,6 +28,7 @@ class TournamentProvider with ChangeNotifier {
   TournamentModel? get activeTournament => _activeTournament;
   bool get isLoading => _isLoading;
   bool get isLeaderboardLoading => _isLeaderboardLoading;
+  bool get isOffline => _isOffline;
   String get leaderboardType => _leaderboardType;
 
   /// Retourne le classement actif selon le type sélectionné
@@ -109,6 +114,7 @@ class TournamentProvider with ChangeNotifier {
 
   Future<void> loadTournaments() async {
     _isLoading = true;
+    _isOffline = false;
     notifyListeners();
 
     try {
@@ -130,8 +136,13 @@ class TournamentProvider with ChangeNotifier {
       }
       await _saveJoinedTournaments();
     } catch (e) {
+      // ✅ Bug corrigé : avant, cette erreur n'était jamais rattrapée par
+      // l'écran (appel "fire-and-forget"), donc une coupure réseau
+      // laissait l'écran Tournoi bloqué sans aucune explication. Le
+      // Tournoi reste une fonctionnalité en ligne (classement en temps
+      // réel), mais on l'indique clairement maintenant.
+      _isOffline = e is ApiException && e.isOffline;
       debugPrint('Error loading tournaments: $e');
-      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();

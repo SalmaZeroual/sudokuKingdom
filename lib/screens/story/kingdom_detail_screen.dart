@@ -37,6 +37,27 @@ class _KingdomDetailScreenState extends State<KingdomDetailScreen> {
           ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
               slivers: [
+                // ✅ NOUVEAU
+                if (storyProvider.isOffline)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      width: double.infinity,
+                      color: AppColors.orange.withOpacity(0.15),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.wifi_off, size: 16, color: AppColors.orange),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Pas de connexion — affichage des données enregistrées.',
+                              style: TextStyle(fontSize: 12, color: AppColors.orange),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 // App Bar avec le thème du royaume
                 SliverAppBar(
                   expandedHeight: 250,

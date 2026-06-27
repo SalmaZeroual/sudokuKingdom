@@ -5,7 +5,7 @@ import '../providers/game_provider.dart';
 import '../config/theme.dart';
 import '../widgets/mode_card.dart';
 import '../widgets/stat_card.dart';
-import '../widgets/avatar_widget.dart'; 
+import '../widgets/avatar_widget.dart';
 import 'modes/classic_mode_screen.dart';
 import 'modes/duel_mode_screen.dart';
 import 'modes/tournament_mode_screen.dart';
@@ -27,9 +27,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  
+
   late final List<Widget> _screens;
-  
+
   @override
   void initState() {
     super.initState();
@@ -145,7 +145,7 @@ class _HomeContentState extends State<_HomeContent> {
       _checkForActiveGame();
     });
   }
-  
+
   // ✅ GUEST: carte d'invitation à créer un compte
   Widget _buildGuestCard(BuildContext context) {
     return Container(
@@ -173,7 +173,8 @@ class _HomeContentState extends State<_HomeContent> {
               color: Colors.white.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.person_outline, color: Colors.white, size: 28),
+            child:
+                const Icon(Icons.person_outline, color: Colors.white, size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -269,91 +270,16 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
+  // ✅ Bug corrigé : avant, une fenêtre bloquante ("Partie en cours",
+  // barrierDismissible: false) forçait un choix Abandonner/Reprendre dès
+  // l'arrivée sur l'accueil, empêchant de naviguer librement. Ce n'est plus
+  // nécessaire : la reprise se fait maintenant automatiquement quand on
+  // retourne dans le mode concerné (Classique/Énigme), sans imposer de
+  // décision immédiate. On se contente ici de précharger l'état en
+  // mémoire, sans rien afficher.
   Future<void> _checkForActiveGame() async {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
-    final hasActiveGame = await gameProvider.checkForActiveGame();
-    
-    if (hasActiveGame && mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.play_circle_outline, color: AppColors.green, size: 28),
-              SizedBox(width: 12),
-              Text('Partie en cours'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Vous avez une partie en cours :'),
-              SizedBox(height: 16),
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.gray50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.gray200),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Temps écoulé:', style: TextStyle(color: AppColors.gray500)),
-                        Text(
-                          gameProvider.formattedTime,
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Erreurs:', style: TextStyle(color: AppColors.gray500)),
-                        Text(
-                          '${gameProvider.mistakes}',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await gameProvider.abandonGame();
-                if (mounted) {
-                  Navigator.of(context).pop();
-                }
-              },
-              child: Text('Abandonner', style: TextStyle(color: AppColors.red)),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                gameProvider.resumeGame();
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => GameScreen()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: Text('Reprendre'),
-            ),
-          ],
-        ),
-      );
-    }
+    await gameProvider.checkForActiveGame();
   }
 
   @override
@@ -361,7 +287,7 @@ class _HomeContentState extends State<_HomeContent> {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
     final isGuest = authProvider.isGuest;
-    
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -382,9 +308,10 @@ class _HomeContentState extends State<_HomeContent> {
                     const SizedBox(width: 12),
                     Text(
                       'Sudoku Kingdom',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                     ),
                   ],
                 ),
@@ -393,14 +320,16 @@ class _HomeContentState extends State<_HomeContent> {
                   GestureDetector(
                     onTap: () => Navigator.of(context).pushNamed('/login'),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: AppColors.blue,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Row(
                         children: [
-                          Icon(Icons.person_outline, color: Colors.white, size: 18),
+                          Icon(Icons.person_outline,
+                              color: Colors.white, size: 18),
                           SizedBox(width: 6),
                           Text(
                             'Connexion',
@@ -416,138 +345,138 @@ class _HomeContentState extends State<_HomeContent> {
                   )
                 else
                   Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.gray50,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.gray200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.star, color: AppColors.yellow, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${user?.xp ?? 0} XP',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.gray900,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.gray50,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.gray200),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.star,
+                            color: AppColors.yellow, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${user?.xp ?? 0} XP',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.gray900,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // ✅ GUEST: carte invité ou carte stats selon l'état
             if (isGuest)
               _buildGuestCard(context)
             else
-            // Player Stats Card
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.blue, AppColors.purple],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+              // Player Stats Card
+              Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.blue, AppColors.purple],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.blue.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
                 ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.blue.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user?.username ?? 'Joueur',
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user?.username ?? 'Joueur',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Niveau ${user?.level ?? 1} - ${user?.rank ?? 'Apprenti'}',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
+                            const SizedBox(height: 4),
+                            Text(
+                              'Niveau ${user?.level ?? 1} - ${user?.rank ?? 'Apprenti'}',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.9),
+                                fontSize: 14,
+                              ),
                             ),
+                          ],
+                        ),
+                        // ✅ MODIFIÉ : Avatar au lieu de l'icône château
+                        AvatarWidget(
+                          avatarId: user?.avatar,
+                          size: 56,
+                          showBorder: true,
+                          borderWidth: 2,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: StatCard(
+                            icon: Icons.emoji_events,
+                            value: '${user?.wins ?? 0}',
+                            label: 'Victoires',
+                            iconColor: AppColors.yellow,
                           ),
-                        ],
-                      ),
-                      // ✅ MODIFIÉ : Avatar au lieu de l'icône château
-                      AvatarWidget(
-                        avatarId: user?.avatar,
-                        size: 56,
-                        showBorder: true,
-                        borderWidth: 2,
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  Row(
-                    children: [
-                      Expanded(
-                        child: StatCard(
-                          icon: Icons.emoji_events,
-                          value: '${user?.wins ?? 0}',
-                          label: 'Victoires',
-                          iconColor: AppColors.yellow,
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: StatCard(
-                          icon: Icons.local_fire_department,
-                          value: '${user?.streak ?? 0}',
-                          label: 'Série',
-                          iconColor: AppColors.orange,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: StatCard(
+                            icon: Icons.local_fire_department,
+                            value: '${user?.streak ?? 0}',
+                            label: 'Série',
+                            iconColor: AppColors.orange,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: StatCard(
-                          icon: Icons.workspace_premium,
-                          value: user?.league ?? 'Bronze',
-                          label: 'Ligue',
-                          iconColor: AppColors.purple,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: StatCard(
+                            icon: Icons.workspace_premium,
+                            value: user?.league ?? 'Bronze',
+                            label: 'Ligue',
+                            iconColor: AppColors.purple,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Game Modes
             Text(
               'Modes de Jeu',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
@@ -563,7 +492,8 @@ class _HomeContentState extends State<_HomeContent> {
                   gradient: const [AppColors.green, Color(0xFF059669)],
                   onTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ClassicModeScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const ClassicModeScreen()),
                     );
                   },
                 ),
@@ -595,7 +525,8 @@ class _HomeContentState extends State<_HomeContent> {
                       return;
                     }
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const TournamentModeScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const TournamentModeScreen()),
                     );
                   },
                 ),
@@ -611,74 +542,16 @@ class _HomeContentState extends State<_HomeContent> {
                       return;
                     }
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const StoryModeScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const StoryModeScreen()),
                     );
                   },
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 24),
-            
-            // Daily Challenge
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.orange, AppColors.red],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.orange.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Défi Quotidien',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Grille spéciale 🎃',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, color: Colors.white, size: 20),
-                      const SizedBox(width: 8),
-                      const Text(
-                        '08:45',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
+
             const SizedBox(height: 20),
           ],
         ),

@@ -70,6 +70,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     }
     
     if (chatProvider.conversations.isEmpty) {
+      // ✅ Bug corrigé : "Aucune conversation" était affiché même en cas de
+      // coupure réseau, comme si les conversations n'existaient pas.
+      if (chatProvider.isOffline) {
+        return _buildOfflineState(chatProvider);
+      }
       return _buildEmptyState();
     }
     
@@ -95,6 +100,38 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     );
   }
   
+  // ✅ NOUVEAU
+  Widget _buildOfflineState(ChatProvider chatProvider) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.wifi_off, size: 80, color: AppColors.gray300),
+            const SizedBox(height: 16),
+            Text(
+              'Pas de connexion',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: AppColors.gray500),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Impossible de charger vos conversations pour le moment.',
+              style: TextStyle(fontSize: 14, color: AppColors.gray400),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => chatProvider.loadConversations(),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(

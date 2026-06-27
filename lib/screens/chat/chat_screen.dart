@@ -40,6 +40,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final chatProvider = Provider.of<ChatProvider>(context, listen: false);
       chatProvider.loadMessages(widget.conversationId);
       chatProvider.markAsRead(widget.conversationId);
+      // ✅ NOUVEAU : on vérifie tout de suite si on peut envoyer un message
+      // (bloqué ? destinataire a désactivé les messages ?) pour afficher
+      // directement le bon état au lieu d'attendre un échec d'envoi.
+      chatProvider.checkConversationStatus(widget.conversationId);
     });
   }
   
@@ -120,6 +124,42 @@ class _ChatScreenState extends State<ChatScreen> {
             ],
           ),
         ),
+        // ✅ NOUVEAU : bloquer/débloquer les messages (n'affecte PAS l'amitié,
+        // on peut toujours se défier en duel).
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'block') {
+                await _confirmBlock(chatProvider);
+              } else if (value == 'unblock') {
+                await chatProvider.unblockFriendMessages(widget.friendId, widget.conversationId);
+              }
+            },
+            itemBuilder: (context) => [
+              chatProvider.iBlockedThem(widget.conversationId)
+                  ? const PopupMenuItem(
+                      value: 'unblock',
+                      child: Row(
+                        children: [
+                          Icon(Icons.lock_open, size: 20, color: AppColors.green),
+                          SizedBox(width: 12),
+                          Text('Débloquer les messages'),
+                        ],
+                      ),
+                    )
+                  : const PopupMenuItem(
+                      value: 'block',
+                      child: Row(
+                        children: [
+                          Icon(Icons.block, size: 20, color: AppColors.red),
+                          SizedBox(width: 12),
+                          Text('Bloquer les messages', style: TextStyle(color: AppColors.red)),
+                        ],
+                      ),
+                    ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -161,8 +201,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
           ),
           
-          // Message input
-          _buildMessageInput(chatProvider),
+          // Message input (ou bandeau si on ne peut pas envoyer)
+          chatProvider.canSend(widget.conversationId)
+              ? _buildMessageInput(chatProvider)
+              : _buildCannotSendBanner(chatProvider),
         ],
       ),
     );
@@ -257,6 +299,77 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
   
+  // ✅ NOUVEAU : remplace la barre de saisie quand on ne peut pas envoyer
+  // (bloqué ou destinataire ayant désactivé les messages). Pas de jargon
+  // technique, juste un message clair.
+  Widget _buildCannotSendBanner(ChatProvider chatProvider) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.gray100,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Icon(Icons.block, color: AppColors.gray500, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Vous ne pouvez pas envoyer de message à cet utilisateur.',
+                style: TextStyle(color: AppColors.gray600, fontSize: 13),
+              ),
+            ),
+            if (chatProvider.iBlockedThem(widget.conversationId))
+              TextButton(
+                onPressed: () => chatProvider.unblockFriendMessages(
+                  widget.friendId,
+                  widget.conversationId,
+                ),
+                child: const Text('Débloquer'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmBlock(ChatProvider chatProvider) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bloquer les messages ?'),
+        content: Text(
+          '${widget.friendUsername} ne pourra plus vous envoyer de message. '
+          'Vous resterez amis et pourrez toujours jouer en duel ensemble.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.red),
+            child: const Text('Bloquer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await chatProvider.blockFriendMessages(widget.friendId, widget.conversationId);
+    }
+  }
+  
   Future<void> _sendMessage(ChatProvider chatProvider) async {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
@@ -272,9 +385,12 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } else {
       if (mounted) {
+        // ✅ Bug corrigé : avant, message générique "Erreur lors de
+        // l'envoi" qui ressemblait à un problème de connexion. On affiche
+        // maintenant le vrai message (ex: bloqué, plus amis...).
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur lors de l\'envoi du message'),
+          SnackBar(
+            content: Text(chatProvider.errorMessage ?? 'Erreur lors de l\'envoi du message'),
             backgroundColor: AppColors.red,
           ),
         );

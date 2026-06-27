@@ -23,7 +23,8 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
   Map<String, dynamic>? _friendData;
   bool _isLoading = true;
   String? _error;
-  
+  bool _isNotFriendsAnymore = false; // ✅ NOUVEAU
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +35,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _isNotFriendsAnymore = false;
     });
     
     try {
@@ -43,10 +45,21 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-        _isLoading = false;
-      });
+      // ✅ Bug corrigé : avant, "vous n'êtes plus amis" (403) s'affichait
+      // comme une erreur générique cryptique ("Erreur 403" / "Erreur de
+      // chargement"). Maintenant on distingue ce cas précis pour afficher
+      // un message clair plutôt qu'une fausse erreur technique.
+      if (e is ApiException && e.statusCode == 403) {
+        setState(() {
+          _isNotFriendsAnymore = true;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _error = e is ApiException ? e.message : e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -55,33 +68,76 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profil de l\'ami'),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'remove') {
-                _showRemoveFriendDialog();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'remove',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_remove, size: 20, color: AppColors.red),
-                    SizedBox(width: 12),
-                    Text('Retirer cet ami', style: TextStyle(color: AppColors.red)),
+        actions: _isNotFriendsAnymore
+            ? null
+            : [
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'remove') {
+                      _showRemoveFriendDialog();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'remove',
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_remove, size: 20, color: AppColors.red),
+                          SizedBox(width: 12),
+                          Text('Retirer cet ami', style: TextStyle(color: AppColors.red)),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _buildErrorState()
-              : _buildProfileContent(),
+          : _isNotFriendsAnymore
+              ? _buildNotFriendsState()
+              : _error != null
+                  ? _buildErrorState()
+                  : _buildProfileContent(),
+    );
+  }
+
+  // ✅ NOUVEAU : état dédié, clair, au lieu d'une erreur technique.
+  Widget _buildNotFriendsState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_off_outlined, size: 64, color: AppColors.gray400),
+            const SizedBox(height: 16),
+            const Text(
+              'Vous n\'êtes plus amis',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Vous ne pouvez plus voir le profil de cette personne.',
+              style: TextStyle(color: AppColors.gray500),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retour'),
+            ),
+          ],
+        ),
+      ),
     );
   }
   

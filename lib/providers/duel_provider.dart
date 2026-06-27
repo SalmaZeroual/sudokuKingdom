@@ -5,9 +5,17 @@ import '../models/duel_model.dart';
 import '../models/friend_model.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
+import '../services/offline_service.dart';
 import '../config/constants.dart';
 
 class DuelProvider with ChangeNotifier {
+  DuelProvider() {
+    // ✅ Redonne sa chance à la liste d'invitations de duel dès le retour
+    // réel du réseau (même correction que Amis/Messages/Énigme).
+    OfflineService.registerReconnectCallback(() async {
+      if (_isInvitationsOffline) await loadPendingDuelInvitations();
+    });
+  }
   DuelModel? _currentDuel;
   List<List<int>> _playerGrid = [];
   List<List<bool>> _initialCells = [];
@@ -17,6 +25,7 @@ class DuelProvider with ChangeNotifier {
   bool _isDuelActive = false;
   bool _isEliminated = false;
   bool _isLoading = false;
+  bool _isInvitationsOffline = false; // ✅ NOUVEAU
   Timer? _timer;
   int _elapsedSeconds = 0;
   int _myMistakes = 0;
@@ -46,6 +55,7 @@ class DuelProvider with ChangeNotifier {
   List<DuelMessage> get messages => _messages;
   String? get lastOpponentMessage => _lastOpponentMessage;
   bool get isLoading => _isLoading;
+  bool get isInvitationsOffline => _isInvitationsOffline;
   List<DuelInvitation> get pendingInvitations => _pendingInvitations;
   int get pendingInvitationsCount => _pendingInvitations.length;
 
@@ -94,6 +104,9 @@ class DuelProvider with ChangeNotifier {
 
   int _getCurrentUserId() => _currentUserId ?? 0;
   int? _currentUserId;
+  // ✅ Exposé publiquement pour permettre à l'UI de déterminer correctement
+  // qui a gagné (au lieu de comparer à tort avec player1Id).
+  int get currentUserId => _getCurrentUserId();
 
   Future<int> loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
@@ -120,6 +133,7 @@ class DuelProvider with ChangeNotifier {
 
   Future<void> loadPendingDuelInvitations() async {
     _isLoading = true;
+    _isInvitationsOffline = false;
     notifyListeners();
     try {
       final response = await _apiService.get('/duel/invitations');
@@ -132,8 +146,11 @@ class DuelProvider with ChangeNotifier {
       print('✅ Loaded ${_pendingInvitations.length} duel invitations');
       
     } catch (e) {
+      // ✅ Bug corrigé : une coupure réseau affichait "Aucune invitation"
+      // comme si elles n'existaient vraiment pas, et la liste précédente
+      // était effacée pour rien sur un simple échec réseau passager.
       print('❌ Error loading duel invitations: $e');
-      _pendingInvitations = [];
+      _isInvitationsOffline = e is ApiException && e.isOffline;
     }
     _isLoading = false;
     notifyListeners();
@@ -210,6 +227,19 @@ class DuelProvider with ChangeNotifier {
   /// Appelé aussi bien lors d'un matchmaking que d'une invitation,
   /// pour que les deux joueurs reçoivent bien les événements de progression.
   void _setupSocketListeners() {
+    // ✅ Bug corrigé : comme le socket est maintenant partagé pour toute la
+    // session (on ne le déconnecte plus entre deux duels), il fallait
+    // retirer les anciens listeners avant d'en ré-ajouter, sinon chaque
+    // nouvelle recherche empilait des doublons (double navigation, double
+    // traitement des événements...).
+    _socketService.off('duel_found');
+    _socketService.off('duel_accepted');
+    _socketService.off('opponent_progress');
+    _socketService.off('duel_finished');
+    _socketService.off('opponent_disconnected');
+    _socketService.off('duel_message');
+    _socketService.off('opponent_eliminated');
+
     _socketService.on('duel_found',            (data) => _handleDuelFound(data));
     // ✅ Bug corrigé : duel_accepted manquait → l'inviteur ne recevait jamais la grille.
     // L'événement est envoyé par le serveur quand l'adversaire accepte l'invitation.
@@ -245,7 +275,10 @@ class DuelProvider with ChangeNotifier {
   void cancelSearch(String difficulty) {
     _socketService.emit('cancel_search', {'difficulty': difficulty, 'userId': _getCurrentUserId()});
     _isSearching = false;
-    _socketService.disconnect();
+    // ✅ Bug corrigé : on NE déconnecte PLUS le socket ici. Ce socket est
+    // partagé par toute l'app (présence en ligne, amis, chat). Le déconnecter
+    // faisait passer l'utilisateur "hors ligne" et cassait le matching
+    // suivant (les listeners n'étaient jamais correctement réattachés).
     notifyListeners();
   }
 
@@ -261,7 +294,7 @@ class DuelProvider with ChangeNotifier {
       // On reste en isSearching=true jusqu'à réception de duel_accepted
     } catch (e) {
       _isSearching = false;
-      _socketService.disconnect();
+      // ✅ Même correction : on ne coupe plus le socket partagé en cas d'erreur.
       notifyListeners();
       print('Error challenging friend: $e');
       rethrow;
@@ -427,9 +460,22 @@ class DuelProvider with ChangeNotifier {
     _timer?.cancel();
     _isDuelActive = false;
     try {
-      await _apiService.post('/duel/${_currentDuel!.id}/complete', {'time_elapsed': _elapsedSeconds});
+      final response = await _apiService.post(
+        '/duel/${_currentDuel!.id}/complete',
+        {'time_elapsed': _elapsedSeconds},
+      );
       _socketService.emit('duel_completed', {'duel_id': _currentDuel!.id});
-      _currentDuel = _currentDuel!.copyWith(winnerId: _getCurrentUserId(), status: 'finished');
+
+      // ✅ Bug corrigé : on ne se déclare plus gagnant localement. Le vrai
+      // gagnant est déterminé par le serveur (premier arrivé), sinon les
+      // deux joueurs se voyaient "Victoire" chacun de leur côté.
+      final winnerId = response is Map ? response['winner_id'] : null;
+      if (winnerId != null) {
+        _currentDuel = _currentDuel!.copyWith(
+          winnerId: winnerId is int ? winnerId : int.tryParse(winnerId.toString()),
+          status: 'finished',
+        );
+      }
     } catch (e) {
       print('Error completing duel: $e');
     }
@@ -472,7 +518,9 @@ class DuelProvider with ChangeNotifier {
     if (_currentDuel != null && _isDuelActive) {
       _socketService.emit('abandon_duel', {'duel_id': _currentDuel!.id});
     }
-    _socketService.disconnect();
+    // ✅ Bug corrigé : on NE déconnecte PLUS le socket partagé ici (cause
+    // racine du bug "après un duel, plus personne ne se trouve" : le socket
+    // sert aussi à la présence en ligne et au chat, pas juste au duel).
     _resetState();
   }
 
@@ -494,7 +542,9 @@ class DuelProvider with ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
-    _socketService.disconnect();
+    // ✅ Le socket est partagé pour toute l'app : on ne le déconnecte pas
+    // ici. S'il faut vraiment le fermer, ça doit se faire au logout
+    // (AuthProvider s'en charge déjà).
     super.dispose();
   }
 }

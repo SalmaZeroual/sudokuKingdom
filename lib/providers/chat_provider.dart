@@ -3,8 +3,17 @@
 import 'package:flutter/material.dart';
 import '../models/conversation_model.dart';
 import '../services/api_service.dart';
+import '../services/offline_service.dart';
 
 class ChatProvider with ChangeNotifier {
+  ChatProvider() {
+    // ✅ Même correction que pour les Amis : on redonne sa chance à la
+    // liste de conversations dès le retour réel du réseau.
+    OfflineService.registerReconnectCallback(() async {
+      if (_isOffline) await loadConversations();
+    });
+  }
+
   List<ConversationModel> _conversations = [];
   Map<int, List<MessageModel>> _messages = {}; // conversationId -> messages
   
@@ -12,6 +21,14 @@ class ChatProvider with ChangeNotifier {
   bool _isSendingMessage = false;
   int _unreadCount = 0;
   String? _errorMessage;
+  bool _isOffline = false; // ✅ NOUVEAU
+
+  // ✅ NOUVEAU : statut d'envoi par conversation (peut-on envoyer ? pourquoi pas ?)
+  // Permet d'afficher directement "Vous ne pouvez pas envoyer de message"
+  // au lieu d'une fausse erreur de connexion.
+  final Map<int, bool> _canSend = {};
+  final Map<int, String?> _blockReason = {}; // 'blocked' | 'messages_disabled' | null
+  final Map<int, bool> _iBlockedThem = {};
   
   final ApiService _apiService = ApiService();
   
@@ -22,6 +39,11 @@ class ChatProvider with ChangeNotifier {
   bool get isSendingMessage => _isSendingMessage;
   int get unreadCount => _unreadCount;
   String? get errorMessage => _errorMessage;
+  bool get isOffline => _isOffline;
+
+  bool canSend(int conversationId) => _canSend[conversationId] ?? true;
+  String? blockReason(int conversationId) => _blockReason[conversationId];
+  bool iBlockedThem(int conversationId) => _iBlockedThem[conversationId] ?? false;
   
   // Get messages for a specific conversation
   List<MessageModel> getMessagesForConversation(int conversationId) {
@@ -32,6 +54,7 @@ class ChatProvider with ChangeNotifier {
   Future<void> loadConversations() async {
     _isLoading = true;
     _errorMessage = null;
+    _isOffline = false;
     notifyListeners();
     
     try {
@@ -46,6 +69,11 @@ class ChatProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
+      // ✅ Bug corrigé : avant, une coupure réseau affichait "Aucune
+      // conversation" comme si elles n'existaient pas. On garde la
+      // dernière liste connue et on signale clairement le problème de
+      // connexion.
+      _isOffline = e is ApiException && e.isOffline;
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
@@ -110,11 +138,60 @@ class ChatProvider with ChangeNotifier {
     }
   }
   
+  // ✅ NOUVEAU : vérifie si on peut envoyer un message dans cette
+  // conversation (bloqué ? destinataire a désactivé les messages ?).
+  // À appeler à l'ouverture du chat.
+  Future<void> checkConversationStatus(int conversationId) async {
+    try {
+      final response = await _apiService.get('/chat/conversations/$conversationId/status');
+      _canSend[conversationId] = response['can_send'] ?? true;
+      _blockReason[conversationId] = response['reason'];
+      _iBlockedThem[conversationId] = response['i_blocked_them'] ?? false;
+      notifyListeners();
+    } catch (e) {
+      print('Error checking conversation status: $e');
+      // En cas d'erreur réseau on n'empêche pas d'essayer d'envoyer.
+      _canSend[conversationId] = true;
+    }
+  }
+
+  // ✅ NOUVEAU : bloquer les messages d'un ami. Ne touche PAS à l'amitié :
+  // on reste amis (peut toujours se défier en duel), mais plus aucun
+  // message ne passe tant que ce n'est pas débloqué.
+  Future<bool> blockFriendMessages(int friendId, int conversationId) async {
+    try {
+      await _apiService.post('/chat/block/$friendId', {});
+      _canSend[conversationId] = false;
+      _blockReason[conversationId] = 'blocked';
+      _iBlockedThem[conversationId] = true;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      print('Error blocking user: $e');
+      return false;
+    }
+  }
+
+  Future<bool> unblockFriendMessages(int friendId, int conversationId) async {
+    try {
+      await _apiService.delete('/chat/block/$friendId');
+      _canSend[conversationId] = true;
+      _blockReason[conversationId] = null;
+      _iBlockedThem[conversationId] = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      print('Error unblocking user: $e');
+      return false;
+    }
+  }
+
   // Send a message
   Future<bool> sendMessage(int conversationId, String content) async {
     if (content.trim().isEmpty) return false;
     
     _isSendingMessage = true;
+    _errorMessage = null;
     notifyListeners();
     
     try {
@@ -156,6 +233,23 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      // ✅ Bug corrigé : avant, on perdait la vraie raison de l'échec
+      // ("connexion ?" se demandait l'utilisateur, alors que c'est tout
+      // simplement qu'il n'est plus ami / a été bloqué). Maintenant on
+      // garde le message précis renvoyé par le serveur et on met à jour
+      // l'état de blocage pour que la barre de saisie se cache.
+      if (e is ApiException) {
+        _errorMessage = e.message;
+        if (e.data?['blocked'] == true) {
+          _canSend[conversationId] = false;
+          _blockReason[conversationId] = 'blocked';
+        } else if (e.data?['messages_disabled'] == true) {
+          _canSend[conversationId] = false;
+          _blockReason[conversationId] = 'messages_disabled';
+        }
+      } else {
+        _errorMessage = e.toString();
+      }
       print('Error sending message: $e');
       _isSendingMessage = false;
       notifyListeners();

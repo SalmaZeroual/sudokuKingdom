@@ -5,6 +5,7 @@ import '../../providers/friends_provider.dart';
 import '../../config/theme.dart';
 import '../../models/friend_model.dart';
 import '../../widgets/avatar_widget.dart';
+import '../../widgets/offline_state.dart';
 
 class AddFriendScreen extends StatefulWidget {
   const AddFriendScreen({Key? key}) : super(key: key);
@@ -333,6 +334,17 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             ),
           ],
         ),
+      );
+    }
+
+    // ✅ Bug corrigé : avant, une coupure réseau pendant la recherche
+    // affichait "Aucun utilisateur trouvé / Vérifiez l'ID" — comme si ce
+    // nom ou cet ID n'existait pas, alors qu'on n'a simplement pas pu
+    // vérifier.
+    if (friendsProvider.isSearchOffline) {
+      return OfflineState(
+        message: 'Impossible de vérifier ce nom ou cet ID pour le moment.',
+        onRetry: () => friendsProvider.searchUsers(_searchController.text),
       );
     }
 

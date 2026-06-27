@@ -13,6 +13,12 @@ import 'api_service.dart';
 // ─── Clés SharedPreferences ──────────────────────────────────────────────────
 const _kOfflineGame    = 'offline_current_game';
 const _kPendingSync    = 'offline_pending_sync';
+// ✅ NOUVEAU : file d'attente dédiée aux chapitres Énigme terminés hors-ligne.
+// Une partie classique et un chapitre d'Énigme ne se synchronisent pas de
+// la même façon (récompenses différentes : étoiles, artefacts...), donc on
+// les garde séparés plutôt que de forcer le chapitre dans le format
+// "games" utilisé par /game/sync-offline.
+const _kPendingChapters = 'offline_pending_chapters';
 
 class OfflineService {
   OfflineService._();
@@ -21,6 +27,19 @@ class OfflineService {
   final ApiService _api = ApiService();
   StreamSubscription? _connectivitySub;
   bool _isSyncing = false;
+
+  // ✅ NOUVEAU : registre de callbacks à rappeler dès que la connexion
+  // revient. Corrige le bug où un écran (Amis, Messages, Énigme) qui avait
+  // échoué à charger une fois UNE SEULE FOIS (au premier passage sur
+  // l'onglet, ces écrans ne sont créés qu'une fois pour toute la session)
+  // restait bloqué sur "Pas de connexion" pour le reste de la session,
+  // même longtemps après le retour du réseau, puisque rien ne déclenchait
+  // de nouvel essai automatique.
+  static final List<Future<void> Function()> _reconnectCallbacks = [];
+
+  static void registerReconnectCallback(Future<void> Function() callback) {
+    _reconnectCallbacks.add(callback);
+  }
 
   // ── Vérifier la connectivité RÉELLE ─────────────────────────────────────
   //
@@ -58,9 +77,25 @@ class OfflineService {
     _connectivitySub?.cancel();
     _connectivitySub =
         Connectivity().onConnectivityChanged.listen((result) async {
-      if (result != ConnectivityResult.none) {
-        debugPrint('🌐 Réseau retrouvé — synchronisation...');
-        await syncPending();
+      if (result == ConnectivityResult.none) return;
+
+      // ✅ On vérifie la connexion RÉELLE (pas juste l'état de l'interface
+      // réseau) avant de relancer quoi que ce soit — sinon "wifi activé
+      // mais sans accès internet réel" déclencherait quand même un essai.
+      if (!await isOnline()) return;
+
+      debugPrint('🌐 Réseau retrouvé — synchronisation...');
+      await syncPending();
+      await syncPendingChapters(); // chapitres Énigme en attente
+
+      // ✅ NOUVEAU : on redonne leur chance aux écrans qui étaient restés
+      // bloqués sur "Pas de connexion" (Amis, Messages, Énigme...).
+      for (final callback in _reconnectCallbacks) {
+        try {
+          await callback();
+        } catch (e) {
+          debugPrint('Erreur callback de reconnexion: $e');
+        }
       }
     });
   }
@@ -149,25 +184,98 @@ class OfflineService {
   // SAUVEGARDE LOCALE DE LA PARTIE EN COURS
   // ──────────────────────────────────────────────────────────────────────────
 
-  Future<void> saveCurrentGame(Map<String, dynamic> gameData) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kOfflineGame, jsonEncode(gameData));
+  // ✅ Bug corrigé : avant, UN SEUL emplacement de sauvegarde existait pour
+  // toute l'app. Du coup, commencer une partie en "Moyen" pendant qu'une
+  // partie "Facile" était en cours écrasait la sauvegarde de celle-ci — en
+  // revenant sur "Facile" plus tard, elle avait disparu. Idem pour les
+  // chapitres Énigme. Maintenant chaque (mode, difficulté) ou (story,
+  // chapitre) a son propre emplacement, sous une seule clé SharedPreferences
+  // (une map JSON) pour rester simple et économe en appels disque.
+
+  String _slotKey(String? mode, String? difficulty, int? chapterId) {
+    if (mode == 'story') return 'story:${chapterId ?? 0}';
+    return '${mode ?? 'classic'}:${difficulty ?? 'moyen'}';
   }
 
-  Future<Map<String, dynamic>?> loadCurrentGame() async {
+  Future<Map<String, dynamic>> _loadAllSlots() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_kOfflineGame);
-    if (raw == null) return null;
+    if (raw == null) return {};
     try {
-      return jsonDecode(raw) as Map<String, dynamic>;
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : {};
     } catch (_) {
-      return null;
+      return {};
     }
   }
 
-  Future<void> clearCurrentGame() async {
+  Future<void> _saveAllSlots(Map<String, dynamic> slots) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kOfflineGame);
+    await prefs.setString(_kOfflineGame, jsonEncode(slots));
+  }
+
+  Future<void> saveCurrentGame(Map<String, dynamic> gameData) async {
+    final slots = await _loadAllSlots();
+    final key = _slotKey(
+      gameData['mode'] as String?,
+      gameData['difficulty'] as String?,
+      gameData['chapter_id'] as int?,
+    );
+    slots[key] = {
+      ...gameData,
+      'saved_at': DateTime.now().toIso8601String(),
+    };
+    await _saveAllSlots(slots);
+  }
+
+  /// Si [mode] (et [difficulty] / [chapterId]) sont précisés, retourne
+  /// uniquement la sauvegarde de cet emplacement précis. Sinon, retourne la
+  /// sauvegarde la plus récente toutes difficultés/chapitres confondus
+  /// (utile au démarrage de l'app, avant de savoir ce que l'utilisateur va
+  /// choisir).
+  Future<Map<String, dynamic>?> loadCurrentGame({
+    String? mode,
+    String? difficulty,
+    int? chapterId,
+  }) async {
+    final slots = await _loadAllSlots();
+    if (slots.isEmpty) return null;
+
+    if (mode != null) {
+      final key = _slotKey(mode, difficulty, chapterId);
+      final data = slots[key];
+      return data is Map<String, dynamic> ? data : null;
+    }
+
+    // Pas de filtre : on prend la sauvegarde la plus récente.
+    Map<String, dynamic>? mostRecent;
+    DateTime? mostRecentDate;
+    for (final value in slots.values) {
+      if (value is! Map<String, dynamic>) continue;
+      final savedAt = DateTime.tryParse(value['saved_at']?.toString() ?? '');
+      if (mostRecentDate == null || (savedAt != null && savedAt.isAfter(mostRecentDate))) {
+        mostRecent = value;
+        mostRecentDate = savedAt;
+      }
+    }
+    return mostRecent;
+  }
+
+  /// Supprime uniquement l'emplacement précisé. Sans argument, supprime
+  /// TOUTES les sauvegardes (à utiliser avec prudence).
+  Future<void> clearCurrentGame({
+    String? mode,
+    String? difficulty,
+    int? chapterId,
+  }) async {
+    if (mode == null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kOfflineGame);
+      return;
+    }
+    final slots = await _loadAllSlots();
+    slots.remove(_slotKey(mode, difficulty, chapterId));
+    await _saveAllSlots(slots);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -207,6 +315,85 @@ class OfflineService {
 
   Future<int> pendingCount() async {
     return (await _getPending()).length;
+  }
+
+  // ── File d'attente spécifique aux chapitres Énigme ──────────────────────
+
+  /// Met en attente un chapitre terminé hors-ligne (XP, étoiles, artefact
+  /// non perdus : ils seront crédités dès le retour de connexion).
+  Future<void> enqueuePendingChapterCompletion({
+    required int chapterId,
+    required int timeTaken,
+    required int mistakes,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kPendingChapters);
+    final list = raw != null
+        ? List<Map<String, dynamic>>.from(
+            (jsonDecode(raw) as List).map((e) => e as Map<String, dynamic>))
+        : <Map<String, dynamic>>[];
+
+    list.add({
+      'chapter_id': chapterId,
+      'time_taken': timeTaken,
+      'mistakes': mistakes,
+      'queued_at': DateTime.now().toIso8601String(),
+    });
+    await prefs.setString(_kPendingChapters, jsonEncode(list));
+    debugPrint('📥 Chapitre Énigme en attente de sync (total: ${list.length})');
+  }
+
+  Future<List<Map<String, dynamic>>> _getPendingChapters() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kPendingChapters);
+    if (raw == null) return [];
+    try {
+      return List<Map<String, dynamic>>.from(
+          (jsonDecode(raw) as List).map((e) => e as Map<String, dynamic>));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _savePendingChapters(List<Map<String, dynamic>> list) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPendingChapters, jsonEncode(list));
+  }
+
+  Future<int> pendingChaptersCount() async {
+    return (await _getPendingChapters()).length;
+  }
+
+  /// Envoie les chapitres Énigme terminés hors-ligne, un par un (l'API
+  /// /story/chapters/:id/complete ne gère qu'un chapitre à la fois). Les
+  /// envois réussis sont retirés de la file ; en cas d'échec (toujours
+  /// hors-ligne), on arrête et on réessaiera plus tard.
+  Future<int> syncPendingChapters() async {
+    final pending = await _getPendingChapters();
+    if (pending.isEmpty) return 0;
+    if (!await isOnline()) return 0;
+
+    int synced = 0;
+    final remaining = <Map<String, dynamic>>[];
+
+    for (final item in pending) {
+      try {
+        await _api.post('/story/chapters/${item['chapter_id']}/complete', {
+          'time_taken': item['time_taken'],
+          'mistakes': item['mistakes'],
+        });
+        synced++;
+      } catch (e) {
+        debugPrint('❌ Sync chapitre ${item['chapter_id']} échouée: $e');
+        remaining.add(item); // on réessaiera plus tard
+      }
+    }
+
+    await _savePendingChapters(remaining);
+    if (synced > 0) {
+      debugPrint('✅ $synced chapitre(s) Énigme synchronisé(s)');
+    }
+    return synced;
   }
 
   // ──────────────────────────────────────────────────────────────────────────

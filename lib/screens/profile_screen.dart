@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../services/account_storage_service.dart'; // ✅ AJOUTÉ
 import '../config/theme.dart';
 import '../widgets/avatar_widget.dart';
@@ -17,6 +18,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _savingDiscoverability = false;
+  bool _savingMessagePrivacy = false; // ✅ NOUVEAU
 
   Future<void> _updateDiscoverability(BuildContext context, String value) async {
     setState(() => _savingDiscoverability = true);
@@ -25,13 +27,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await authProvider.apiService.patch('/user/discoverability', {'discoverability': value});
       await authProvider.loadUser();
     } catch (e) {
+      // ✅ Bug corrigé : "Erreur lors de la mise à jour" s'affichait même
+      // pour une simple coupure réseau, ce qui laissait croire à un vrai
+      // problème alors qu'il suffit juste de réessayer une fois connecté.
       if (mounted) {
+        final isOffline = e is ApiException && e.isOffline;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de la mise à jour'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(isOffline ? 'Pas de connexion' : 'Erreur lors de la mise à jour'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => _savingDiscoverability = false);
+    }
+  }
+
+  // ✅ NOUVEAU : accepter ou non les messages des autres joueurs, y compris
+  // des amis. Si désactivé, plus personne ne peut envoyer de message, même
+  // dans une conversation déjà existante.
+  Future<void> _updateMessagePrivacy(BuildContext context, bool acceptsMessages) async {
+    setState(() => _savingMessagePrivacy = true);
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.apiService.patch('/user/message-privacy', {'accepts_messages': acceptsMessages});
+      await authProvider.loadUser();
+    } catch (e) {
+      if (mounted) {
+        final isOffline = e is ApiException && e.isOffline;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isOffline ? 'Pas de connexion' : 'Erreur lors de la mise à jour'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingMessagePrivacy = false);
     }
   }
 
@@ -380,6 +413,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ? null
                         : () => _updateDiscoverability(context, 'username'),
                   ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ✅ NOUVEAU : accepter ou non les messages des autres joueurs
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.gray50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.gray200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.mail_outline, color: AppColors.gray500),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Accepter les messages',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          'Si désactivé, personne (même tes amis) ne pourra t\'envoyer de message.',
+                          style: TextStyle(fontSize: 12, color: AppColors.gray500),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _savingMessagePrivacy
+                      ? const SizedBox(
+                          width: 24, height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Switch(
+                          value: user?.acceptsMessages ?? true,
+                          activeColor: AppColors.blue,
+                          onChanged: (value) => _updateMessagePrivacy(context, value),
+                        ),
                 ],
               ),
             ),

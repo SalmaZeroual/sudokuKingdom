@@ -77,6 +77,37 @@ class _TournamentModeScreenState extends State<TournamentModeScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
+          if (provider.isOffline && provider.tournaments.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.wifi_off, size: 64, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Pas de connexion',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Le tournoi nécessite une connexion internet.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: () => provider.loadTournaments(),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Réessayer'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
           return RefreshIndicator(
             onRefresh: () => provider.loadTournaments(),
             child: SingleChildScrollView(

@@ -129,9 +129,6 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
                           ),
                         ),
                         
-                        // Action buttons (messages, add friend)
-                        _buildActionButtons(duelProvider),
-                        
                         // Number Pad
                         NumberPad(
                           isNoteMode: false,
@@ -274,6 +271,20 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
   }
   
   Widget _buildHeader(DuelProvider duelProvider) {
+    final duel = duelProvider.currentDuel;
+    final opponentId = duel != null
+        ? (duel.player1Id == duelProvider.currentUserId
+            ? duel.player2Id
+            : duel.player1Id)
+        : null;
+
+    // ✅ L'icône "ajouter ami" n'apparaît que pour un adversaire aléatoire
+    // qui n'est pas déjà un ami (sinon ça n'a pas de sens de la proposer).
+    final friendsProvider = Provider.of<FriendsProvider>(context, listen: false);
+    final alreadyFriend = opponentId == null
+        ? true
+        : friendsProvider.friends.any((f) => f.id == opponentId);
+
     return Container(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -321,7 +332,16 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
             ),
           ),
           
-          const SizedBox(width: 48), // Balance
+          // ✅ Petite icône "ajouter ami" (remplace l'ancien gros bouton
+          // "Ajouter ami" + le bouton "Messages", supprimé).
+          if (!alreadyFriend && opponentId != null)
+            IconButton(
+              icon: const Icon(Icons.person_add_alt_1, color: Colors.white),
+              tooltip: 'Ajouter en ami',
+              onPressed: () => _addOpponentAsFriend(context, duelProvider),
+            )
+          else
+            const SizedBox(width: 48), // Balance quand pas d'icône
         ],
       ),
     );
@@ -335,15 +355,15 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
     
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -353,16 +373,16 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
           Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: AppColors.blue,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
-                child: const Icon(Icons.person, color: Colors.white, size: 24),
+                child: const Icon(Icons.person, color: Colors.white, size: 16),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,7 +394,7 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
                           'Vous',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            fontSize: 13,
                           ),
                         ),
                         Text(
@@ -382,20 +402,21 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
                           style: TextStyle(
                             color: myMistakes >= 2 ? AppColors.red : AppColors.gray600,
                             fontWeight: FontWeight.w600,
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
                         value: myProgress / 100,
                         backgroundColor: AppColors.gray200,
                         valueColor: AlwaysStoppedAnimation<Color>(
                           myMistakes >= 2 ? AppColors.orange : AppColors.blue,
                         ),
-                        minHeight: 10,
+                        minHeight: 6,
                       ),
                     ),
                   ],
@@ -404,46 +425,48 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
             ],
           ),
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 6),
           
           // VS Divider
           Row(
             children: [
-              const Expanded(child: Divider()),
+              const Expanded(child: Divider(height: 1)),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppColors.red,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Text(
                   'VS',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
+                    fontSize: 11,
                   ),
                 ),
               ),
-              const Expanded(child: Divider()),
+              const Expanded(child: Divider(height: 1)),
             ],
           ),
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 6),
           
           // Player 2 (Opponent)
           Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: AppColors.red,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
-                child: const Icon(Icons.person, color: Colors.white, size: 24),
+                child: const Icon(Icons.person, color: Colors.white, size: 16),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -455,7 +478,7 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
                           duelProvider.opponentName,
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            fontSize: 13,
                           ),
                         ),
                         Text(
@@ -463,20 +486,21 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
                           style: TextStyle(
                             color: opponentMistakes >= 2 ? AppColors.red : AppColors.gray600,
                             fontWeight: FontWeight.w600,
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
                         value: opponentProgress / 100,
                         backgroundColor: AppColors.gray200,
                         valueColor: AlwaysStoppedAnimation<Color>(
                           opponentMistakes >= 2 ? AppColors.orange : AppColors.red,
                         ),
-                        minHeight: 10,
+                        minHeight: 6,
                       ),
                     ),
                   ],
@@ -521,118 +545,8 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
     );
   }
   
-  Widget _buildActionButtons(DuelProvider duelProvider) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Quick messages button
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () {
-                _showQuickMessagesDialog(context, duelProvider);
-              },
-              icon: const Icon(Icons.message_outlined, size: 18),
-              label: const Text('Messages'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          
-          const SizedBox(width: 12),
-          
-          // Add friend button
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () {
-                _addOpponentAsFriend(context, duelProvider);
-              },
-              icon: const Icon(Icons.person_add_outlined, size: 18),
-              label: const Text('Ajouter ami'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+
   
-  void _showQuickMessagesDialog(BuildContext context, DuelProvider duelProvider) {
-    final messages = [
-      '👍 Bien joué !',
-      '💪 Tu es fort !',
-      '😎 Facile',
-      '🔥 En feu !',
-      '⚡ Trop rapide',
-      '🎯 Précis',
-    ];
-    
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Messages rapides',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: messages.map((msg) {
-                return ElevatedButton(
-                  onPressed: () {
-                    duelProvider.sendQuickMessage(msg);
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Message envoyé: $msg'),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.gray100,
-                    foregroundColor: AppColors.gray900,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                  ),
-                  child: Text(msg),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
   
   Future<void> _addOpponentAsFriend(BuildContext context, DuelProvider duelProvider) async {
     final duel = duelProvider.currentDuel;
@@ -689,8 +603,13 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
   
   void _showResultDialog(BuildContext context, DuelProvider duelProvider) {
     final duel = duelProvider.currentDuel!;
-    final isWinner = duel.winnerId == duel.player1Id;
-    
+    // ✅ Bug corrigé : on comparait winnerId à player1Id, donc un joueur2
+    // gagnant se voyait afficher "Défaite". On compare maintenant au vrai
+    // identifiant de l'utilisateur courant.
+    final isWinner = duel.winnerId == duelProvider.currentUserId;
+    final isPlayer1 = duel.player1Id == duelProvider.currentUserId;
+    final opponentName = isPlayer1 ? duel.player2Name : duel.player1Name;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -711,8 +630,8 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
           children: [
             Text(
               isWinner 
-                  ? 'Félicitations ! Vous avez battu ${duel.player2Name} !'
-                  : '${duel.player2Name} a gagné cette fois.',
+                  ? 'Félicitations ! Vous avez battu $opponentName !'
+                  : '$opponentName a gagné cette fois.',
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
@@ -775,6 +694,7 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.blue,
+                foregroundColor: Colors.white,
               ),
               child: const Text('Revanche !'),
             ),

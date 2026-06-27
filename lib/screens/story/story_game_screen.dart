@@ -5,17 +5,17 @@ import 'dart:math';
 import '../../providers/game_provider.dart';
 import '../../providers/story_provider.dart';
 import '../../config/theme.dart';
+import '../../config/constants.dart';
 import '../../models/story_model.dart';
 import '../../widgets/sudoku_grid.dart';
 import '../../widgets/number_pad.dart';
 import '../../widgets/kingdom_particles.dart';
 import '../../utils/story_sound_manager.dart';
 
-
 class StoryGameScreen extends StatefulWidget {
   final StoryChapter chapter;
   final Color kingdomColor;
-  
+
   const StoryGameScreen({
     Key? key,
     required this.chapter,
@@ -27,38 +27,39 @@ class StoryGameScreen extends StatefulWidget {
 }
 
 class _StoryGameScreenState extends State<StoryGameScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int? selectedRow;
   int? selectedCol;
   Timer? _gameTimer;
   Timer? _characterMessageTimer;
   int _elapsedTime = 0;
   bool _isInitialized = false;
-  
+
   // Combo system
   int _combo = 0;
   int _comboMax = 0;
 
   // ✅ NOUVEAU: Indices
   int _hintsRemaining = 3;
-  
+
   // Character messages
   String? _characterMessage;
   late AnimationController _messageAnimController;
   late Animation<double> _messageAnimation;
-  
+
   // Grid animation
   late AnimationController _gridAnimController;
   late Animation<double> _gridScaleAnimation;
   late Animation<double> _gridFadeAnimation;
-  
+
   // Sound manager
   final _soundManager = StorySoundManager();
-  
+
   @override
   void initState() {
     super.initState();
-    
+    WidgetsBinding.instance.addObserver(this);
+
     // Setup animations
     _messageAnimController = AnimationController(
       vsync: this,
@@ -68,7 +69,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       parent: _messageAnimController,
       curve: Curves.elasticOut,
     );
-    
+
     _gridAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -79,22 +80,23 @@ class _StoryGameScreenState extends State<StoryGameScreen>
     _gridFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _gridAnimController, curve: Curves.easeIn),
     );
-    
+
     // Initialize game
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final gameProvider = Provider.of<GameProvider>(context, listen: false);
-      _initializeGame(gameProvider);
-      
+      await _initializeGame(gameProvider);
+
+      if (!mounted) return;
       setState(() {
         _isInitialized = true;
       });
-      
+
       // Start grid animation
       _gridAnimController.forward();
-      
+
       // ✅ SOUND: démarrer la musique du royaume
       _soundManager.playKingdomMusic(widget.chapter.kingdomId);
-      
+
       // Start game timer
       _gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (mounted) {
@@ -103,17 +105,17 @@ class _StoryGameScreenState extends State<StoryGameScreen>
           });
         }
       });
-      
+
       // Start character messages timer
       _startCharacterMessages();
-      
+
       // Check for completion
       Timer.periodic(const Duration(milliseconds: 500), (timer) {
         if (!mounted) {
           timer.cancel();
           return;
         }
-        
+
         final gameProvider = Provider.of<GameProvider>(context, listen: false);
         if (gameProvider.isCompleted) {
           timer.cancel();
@@ -124,24 +126,25 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       });
     });
   }
-  
+
   void _startCharacterMessages() {
-    _characterMessageTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    _characterMessageTimer =
+        Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         _showCharacterMessage();
       }
     });
   }
-  
+
   void _showCharacterMessage() {
     final messages = _getCharacterMessages();
     if (messages.isEmpty) return;
-    
+
     final random = Random();
     setState(() {
       _characterMessage = messages[random.nextInt(messages.length)];
     });
-    
+
     _messageAnimController.forward().then((_) {
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) {
@@ -156,7 +159,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       });
     });
   }
-  
+
   List<String> _getCharacterMessages() {
     switch (widget.chapter.kingdomId) {
       case 1: // Forêt
@@ -198,9 +201,10 @@ class _StoryGameScreenState extends State<StoryGameScreen>
         return [];
     }
   }
-  
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _gameTimer?.cancel();
     _characterMessageTimer?.cancel();
     _messageAnimController.dispose();
@@ -210,20 +214,46 @@ class _StoryGameScreenState extends State<StoryGameScreen>
     _soundManager.dispose();
     super.dispose();
   }
-  
-  void _initializeGame(GameProvider gameProvider) {
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      gameProvider.pauseGame();
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      gameProvider.resumeGame();
+    }
+  }
+
+  Future<void> _initializeGame(GameProvider gameProvider) async {
     // ✅ Réinitialiser la sélection à chaque nouveau chapitre.
     // Sans ça, si la cellule sélectionnée du chapitre précédent
     // n'existe plus (ou est initialCell), les taps étaient ignorés.
     selectedRow = null;
     selectedCol = null;
 
-    gameProvider.initializeStoryGame(
-      widget.chapter.grid!,
-      widget.chapter.solution!,
+    // ✅ Si une sauvegarde locale existe pour CE chapitre précis et n'est
+    // pas terminée, on la reprend au lieu d'écraser la progression avec
+    // une grille neuve.
+    final resumed = await gameProvider.tryResumeGame(
+      mode: AppConstants.modeStory,
+      chapterId: widget.chapter.id,
     );
+
+    if (!resumed) {
+      gameProvider.initializeStoryGame(
+        widget.chapter.grid!,
+        widget.chapter.solution!,
+        chapterId: widget.chapter.id,
+      );
+    }
   }
-  
+
   void _onCellValueChanged(int row, int col, int value, bool isCorrect) {
     if (isCorrect) {
       // Increase combo
@@ -231,10 +261,10 @@ class _StoryGameScreenState extends State<StoryGameScreen>
         _combo++;
         if (_combo > _comboMax) _comboMax = _combo;
       });
-      
+
       // Play success sound
       _soundManager.playSound(SoundEffect.correctCell);
-      
+
       // Show combo message
       if (_combo >= 3) {
         _soundManager.playSound(SoundEffect.combo);
@@ -244,7 +274,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       setState(() {
         _combo = 0;
       });
-      
+
       // Play error sound
       _soundManager.playSound(SoundEffect.wrongCell);
     }
@@ -270,7 +300,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
 
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('💡 Indice utilisé ! Il en reste $_hintsRemaining'),
+                content:
+                    Text('💡 Indice utilisé ! Il en reste $_hintsRemaining'),
                 backgroundColor: widget.kingdomColor,
                 duration: const Duration(seconds: 2),
               ),
@@ -323,17 +354,17 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       );
     }
   }
-  
+
   String get _formattedTime {
     final minutes = _elapsedTime ~/ 60;
     final seconds = _elapsedTime % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final gameProvider = Provider.of<GameProvider>(context);
-    
+
     if (!_isInitialized || gameProvider.playerGrid.isEmpty) {
       return Scaffold(
         appBar: AppBar(
@@ -360,10 +391,15 @@ class _StoryGameScreenState extends State<StoryGameScreen>
         ),
       );
     }
-    
+
     return WillPopScope(
       onWillPop: () async {
         final shouldPop = await _showExitDialog(context);
+        if (shouldPop == true) {
+          final gameProvider =
+              Provider.of<GameProvider>(context, listen: false);
+          await gameProvider.pauseGame();
+        }
         return shouldPop ?? false;
       },
       child: Scaffold(
@@ -394,6 +430,9 @@ class _StoryGameScreenState extends State<StoryGameScreen>
             onPressed: () async {
               final shouldExit = await _showExitDialog(context);
               if (shouldExit == true && context.mounted) {
+                final gameProvider =
+                    Provider.of<GameProvider>(context, listen: false);
+                await gameProvider.pauseGame();
                 Navigator.of(context).pop();
               }
             },
@@ -405,7 +444,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                 _soundManager.isMuted ? Icons.volume_off : Icons.volume_up,
                 color: Colors.white,
               ),
-              tooltip: _soundManager.isMuted ? 'Activer le son' : 'Couper le son',
+              tooltip:
+                  _soundManager.isMuted ? 'Activer le son' : 'Couper le son',
               onPressed: () {
                 setState(() {
                   _soundManager.toggleMute();
@@ -419,14 +459,16 @@ class _StoryGameScreenState extends State<StoryGameScreen>
               onPressed: () {
                 gameProvider.toggleNoteMode();
               },
-              tooltip: gameProvider.isNoteMode ? 'Mode notes activé' : 'Activer mode notes',
+              tooltip: gameProvider.isNoteMode
+                  ? 'Mode notes activé'
+                  : 'Activer mode notes',
             ),
             // ✅ Bouton pause — même comportement que le jeu classique
             IconButton(
               icon: const Icon(Icons.pause),
               tooltip: 'Pause',
-              onPressed: () {
-                gameProvider.pauseGame();
+              onPressed: () async {
+                await gameProvider.pauseGame();
                 _showPauseDialog(context, gameProvider);
               },
             ),
@@ -441,7 +483,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                 kingdomColor: widget.kingdomColor,
               ),
             ),
-            
+
             // Main content
             SafeArea(
               child: Column(
@@ -478,7 +520,9 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                               icon: Icons.local_fire_department,
                               label: 'Combo',
                               value: '$_combo',
-                              color: _combo >= 3 ? AppColors.orange : widget.kingdomColor,
+                              color: _combo >= 3
+                                  ? AppColors.orange
+                                  : widget.kingdomColor,
                             ),
                             // ✅ NOUVEAU: Indices cliquable
                             GestureDetector(
@@ -494,12 +538,13 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                             ),
                           ],
                         ),
-                        
+
                         // Note mode indicator
                         if (gameProvider.isNoteMode) ...[
                           const SizedBox(height: 12),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
                             decoration: BoxDecoration(
                               color: widget.kingdomColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(20),
@@ -508,7 +553,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.edit, color: widget.kingdomColor, size: 16),
+                                Icon(Icons.edit,
+                                    color: widget.kingdomColor, size: 16),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Mode notes activé',
@@ -522,12 +568,13 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                             ),
                           ),
                         ],
-                        
+
                         // Combo message
                         if (_combo >= 3) ...[
                           const SizedBox(height: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 6),
                             decoration: BoxDecoration(
                               color: AppColors.orange.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(20),
@@ -536,7 +583,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.local_fire_department, color: AppColors.orange, size: 16),
+                                const Icon(Icons.local_fire_department,
+                                    color: AppColors.orange, size: 16),
                                 const SizedBox(width: 8),
                                 Text(
                                   'COMBO x$_combo ! 🔥',
@@ -553,7 +601,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                       ],
                     ),
                   ),
-                  
+
                   // Sudoku Grid with animation
                   Expanded(
                     child: Center(
@@ -571,7 +619,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: widget.kingdomColor.withOpacity(0.3),
+                                        color: widget.kingdomColor
+                                            .withOpacity(0.3),
                                         blurRadius: 20,
                                         spreadRadius: 2,
                                       ),
@@ -584,7 +633,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                                     notes: gameProvider.notes,
                                     selectedRow: selectedRow,
                                     selectedCol: selectedCol,
-                                    selectedBooster: gameProvider.selectedBooster,
+                                    selectedBooster:
+                                        gameProvider.selectedBooster,
                                     onCellTap: (row, col) {
                                       setState(() {
                                         selectedRow = row;
@@ -600,24 +650,30 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                       ),
                     ),
                   ),
-                  
+
                   // Number Pad
                   NumberPad(
                     isNoteMode: gameProvider.isNoteMode,
                     grid: gameProvider.playerGrid,
                     onNumberTap: (number) {
                       if (selectedRow != null && selectedCol != null) {
-                        final wasCorrect = gameProvider.playerGrid[selectedRow!][selectedCol!] == 
-                            widget.chapter.solution![selectedRow!][selectedCol!];
-                        
+                        final wasCorrect = gameProvider.playerGrid[selectedRow!]
+                                [selectedCol!] ==
+                            widget.chapter.solution![selectedRow!]
+                                [selectedCol!];
+
                         if (number == 0) {
                           gameProvider.clearCell(selectedRow!, selectedCol!);
                         } else {
-                          gameProvider.setCellValue(selectedRow!, selectedCol!, number);
-                          
+                          gameProvider.setCellValue(
+                              selectedRow!, selectedCol!, number);
+
                           // Check if correct
-                          final isCorrect = number == widget.chapter.solution![selectedRow!][selectedCol!];
-                          _onCellValueChanged(selectedRow!, selectedCol!, number, isCorrect);
+                          final isCorrect = number ==
+                              widget.chapter.solution![selectedRow!]
+                                  [selectedCol!];
+                          _onCellValueChanged(
+                              selectedRow!, selectedCol!, number, isCorrect);
                         }
                       }
                     },
@@ -625,7 +681,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                 ],
               ),
             ),
-            
+
             // Character message overlay
             if (_characterMessage != null)
               Positioned(
@@ -670,7 +726,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       ),
     );
   }
-  
+
   // ✅ Dialog pause — identique au jeu classique
   void _showPauseDialog(BuildContext context, GameProvider gameProvider) {
     showDialog(
@@ -716,14 +772,14 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       ),
     );
   }
-  
+
   void _showVictoryDialog() {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     final mistakes = gameProvider.mistakes;
-    
+
     // Play victory sound
     _soundManager.playSound(SoundEffect.victory);
-    
+
     // Calculate stars
     int stars = 1;
     if (_elapsedTime < 300 && mistakes == 0) {
@@ -731,14 +787,14 @@ class _StoryGameScreenState extends State<StoryGameScreen>
     } else if (_elapsedTime < 600 && mistakes < 3) {
       stars = 2;
     }
-    
+
     // Play star sounds
     for (int i = 0; i < stars; i++) {
       Future.delayed(Duration(milliseconds: 300 * i), () {
         _soundManager.playSound(SoundEffect.star);
       });
     }
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -770,7 +826,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                 ),
               ),
             const SizedBox(height: 16),
-            
+
             // Stars display
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -787,7 +843,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                         child: Icon(
                           i < stars ? Icons.star : Icons.star_border,
                           size: 40,
-                          color: i < stars ? AppColors.yellow : AppColors.gray300,
+                          color:
+                              i < stars ? AppColors.yellow : AppColors.gray300,
                         ),
                       );
                     },
@@ -795,9 +852,9 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                 );
               }),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -875,25 +932,39 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                 context,
                 listen: false,
               );
-              
+
               final result = await storyProvider.completeChapter(
                 widget.chapter.id,
                 _elapsedTime,
                 mistakes,
               );
-              
+
               if (result != null && context.mounted) {
                 if (result['artifact'] != null) {
                   _soundManager.playSound(SoundEffect.artifact);
                   await _showArtifactDialog(result['artifact']);
                 }
-                
+
                 if (result['kingdom_completed'] == true) {
                   await _showKingdomCompletedDialog();
                 }
-                
+
                 Navigator.of(context).pop();
                 Navigator.of(context).pop();
+
+                // ✅ NOUVEAU : si terminé hors-ligne, les récompenses (XP,
+                // étoiles, artefact) seront créditées au retour du réseau,
+                // pas perdues.
+                if (result['offline'] == true && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        '📥 Chapitre terminé hors-ligne — sera synchronisé dès le retour de connexion.',
+                      ),
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -906,7 +977,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       ),
     );
   }
-  
+
   Future<void> _showArtifactDialog(Map<String, dynamic> artifact) {
     return showDialog(
       context: context,
@@ -964,7 +1035,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       ),
     );
   }
-  
+
   Future<void> _showKingdomCompletedDialog() {
     final kingdomNames = [
       '',
@@ -974,7 +1045,7 @@ class _StoryGameScreenState extends State<StoryGameScreen>
       'Montagnes Célestes',
       'Cosmos Éternel',
     ];
-    
+
     return showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -995,7 +1066,8 @@ class _StoryGameScreenState extends State<StoryGameScreen>
               builder: (context, value, child) {
                 return Transform.scale(
                   scale: value,
-                  child: Icon(Icons.castle, size: 80, color: widget.kingdomColor),
+                  child:
+                      Icon(Icons.castle, size: 80, color: widget.kingdomColor),
                 );
               },
             ),
@@ -1035,14 +1107,14 @@ class _GameStat extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  
+
   const _GameStat({
     required this.icon,
     required this.label,
     required this.value,
     required this.color,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return Column(

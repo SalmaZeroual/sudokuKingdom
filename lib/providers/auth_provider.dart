@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
@@ -5,6 +6,11 @@ import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/account_storage_service.dart'; // ✅ AJOUTÉ
 import '../config/constants.dart';
+
+// ✅ NOUVEAU : clé de cache local du profil utilisateur. Permet de rester
+// "connecté" (isAuthenticated/isGuest corrects) même quand le réseau est
+// momentanément indisponible, au lieu de retomber à tort en mode invité.
+const _kCachedUserKey = 'cached_user_profile';
 
 class AuthProvider with ChangeNotifier {
   UserModel? _user;
@@ -36,12 +42,40 @@ class AuthProvider with ChangeNotifier {
     if (_token != null) {
       await loadUser();
 
+      // ✅ Bug corrigé : avant, si le réseau était indisponible ICI (par
+      // exemple au démarrage de l'app sans connexion), loadUser() échouait
+      // silencieusement et _user restait null pour TOUTE la session — même
+      // si le jeton stocké était parfaitement valide. isAuthenticated
+      // devenait donc faux, et l'app traitait un utilisateur connecté
+      // comme un invité, lui proposant de "créer un compte" alors qu'il
+      // en a déjà un. On utilise maintenant le profil mis en cache
+      // localement comme repli : avoir un jeton stocké + un profil en
+      // cache suffit à être considéré comme connecté, même hors-ligne.
+      if (_user == null) {
+        final cached = prefs.getString(_kCachedUserKey);
+        if (cached != null) {
+          try {
+            _user = UserModel.fromJson(jsonDecode(cached) as Map<String, dynamic>);
+            print('📦 Profil chargé depuis le cache local (hors-ligne)');
+          } catch (e) {
+            print('Error loading cached user: $e');
+          }
+        }
+      }
+
       if (_user != null) {
         _socketService.connect();
         _socketService.emit('user_online', _user!.id);
       }
     }
     notifyListeners();
+  }
+
+  // ✅ NOUVEAU : sauvegarde locale du profil, utilisée comme repli hors-ligne.
+  Future<void> _cacheUserProfile() async {
+    if (_user == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kCachedUserKey, jsonEncode(_user!.toJson()));
   }
 
   Future<Map<String, dynamic>> register(
@@ -108,6 +142,10 @@ class AuthProvider with ChangeNotifier {
       _socketService.connect();
       _socketService.emit('user_online', _user!.id);
 
+      // ✅ NOUVEAU : on garde une copie locale du profil pour pouvoir
+      // rester "connecté" même si le réseau tombe par la suite.
+      await _cacheUserProfile();
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -140,6 +178,9 @@ class AuthProvider with ChangeNotifier {
       _socketService.connect();
       _socketService.emit('user_online', _user!.id);
 
+      // ✅ NOUVEAU
+      await _cacheUserProfile();
+
       _isLoading = false;
       notifyListeners();
       return response;
@@ -156,6 +197,8 @@ class AuthProvider with ChangeNotifier {
       final response = await apiService.get('/auth/me');
       _user = UserModel.fromJson(response);
       notifyListeners();
+      // ✅ NOUVEAU : on rafraîchit le cache hors-ligne à chaque succès.
+      await _cacheUserProfile();
     } catch (e) {
       print('Error loading user: $e');
     }
@@ -181,6 +224,7 @@ class AuthProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.tokenKey);
     await prefs.remove(AppConstants.userIdKey);
+    await prefs.remove(_kCachedUserKey); // ✅ NOUVEAU
 
     notifyListeners();
   }
@@ -425,6 +469,7 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(AppConstants.tokenKey);
       await prefs.remove(AppConstants.userIdKey);
+      await prefs.remove(_kCachedUserKey); // ✅ NOUVEAU
 
       _isLoading = false;
       notifyListeners();

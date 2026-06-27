@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import '../../providers/duel_provider.dart';
 import '../../config/theme.dart';
+import '../../services/offline_service.dart';
 import 'duel_game_screen.dart';
 
 class DuelSearchScreen extends StatefulWidget {
@@ -24,6 +25,10 @@ class DuelSearchScreen extends StatefulWidget {
 class _DuelSearchScreenState extends State<DuelSearchScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
+  // ✅ NOUVEAU : si pas de connexion, on affiche un état dédié "Pas de
+  // connexion" pour toute la page — comme pour le Tournoi — plutôt que de
+  // laisser l'animation de recherche tourner indéfiniment sans explication.
+  bool _showOffline = false;
 
   @override
   void initState() {
@@ -45,6 +50,17 @@ class _DuelSearchScreenState extends State<DuelSearchScreen>
   }
   
   Future<void> _startSearch() async {
+    setState(() => _showOffline = false);
+
+    // ✅ Le matchmaking passe par un socket temps réel, qui ne lève pas
+    // d'erreur explicite s'il n'y a pas de connexion — la recherche
+    // tournait donc indéfiniment sans aucune explication. On vérifie la
+    // connexion réelle avant de lancer la recherche.
+    if (!await OfflineService.instance.isOnline()) {
+      if (mounted) setState(() => _showOffline = true);
+      return;
+    }
+
     final duelProvider = Provider.of<DuelProvider>(context, listen: false);
     
     try {
@@ -52,6 +68,17 @@ class _DuelSearchScreenState extends State<DuelSearchScreen>
       
       // Listen for duel found
       _listenForDuel();
+
+      // ✅ Si la recherche tourne encore après 8s sans connexion réelle,
+      // on bascule sur l'état "Pas de connexion" plutôt que de laisser
+      // l'utilisateur attendre indéfiniment sans explication.
+      Future.delayed(const Duration(seconds: 8), () async {
+        if (!mounted) return;
+        final stillSearching = Provider.of<DuelProvider>(context, listen: false).isSearching;
+        if (stillSearching && !await OfflineService.instance.isOnline()) {
+          if (mounted) setState(() => _showOffline = true);
+        }
+      });
       
     } catch (e) {
       if (mounted) {
@@ -86,6 +113,41 @@ class _DuelSearchScreenState extends State<DuelSearchScreen>
     });
   }
   
+  Widget _buildOfflineContent() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off, size: 64, color: Colors.white),
+            const SizedBox(height: 16),
+            const Text(
+              'Pas de connexion',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Le duel nécessite une connexion internet.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: _startSearch,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white),
+              ),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -150,7 +212,9 @@ class _DuelSearchScreenState extends State<DuelSearchScreen>
                 
                 // Content
                 Expanded(
-                  child: Column(
+                  child: _showOffline
+                      ? _buildOfflineContent()
+                      : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Animated swords

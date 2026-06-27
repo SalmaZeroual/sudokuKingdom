@@ -6,6 +6,7 @@ import '../../providers/duel_provider.dart';
 import '../../config/theme.dart';
 import '../../models/friend_model.dart'; 
 import '../../widgets/avatar_widget.dart';
+import '../../widgets/offline_state.dart';
 import 'friend_profile_screen.dart';
 import 'add_friend_screen.dart';
 import '../chat/chat_screen.dart';
@@ -41,6 +42,12 @@ void initState() {
     
     // ✅ NOUVEAU : Écouter les événements socket
     duelProvider.socketService.connect();
+    // ✅ Bug corrigé : comme le socket est partagé et persistant (on ne le
+    // déconnecte plus), rouvrir cet écran plusieurs fois empilait des
+    // listeners en double → 'duel_accepted' déclenchait plusieurs
+    // navigations, 'new_duel_invitation' rechargeait plusieurs fois.
+    duelProvider.socketService.off('duel_accepted');
+    duelProvider.socketService.off('new_duel_invitation');
     duelProvider.socketService.on('duel_accepted', (data) {
       print('🔔 Socket event received: duel_accepted');
       duelProvider.handleDuelAcceptedExternal(data);
@@ -68,6 +75,10 @@ void initState() {
     // ✅ AJOUTÉ : Nettoyer le callback
     final duelProvider = Provider.of<DuelProvider>(context, listen: false);
     duelProvider.setOnDuelAcceptedCallback(null);
+    // ✅ Nettoyer aussi les listeners socket propres à cet écran, pour ne
+    // pas les laisser actifs (et potentiellement dupliqués) une fois sorti.
+    duelProvider.socketService.off('duel_accepted');
+    duelProvider.socketService.off('new_duel_invitation');
     
     _tabController.dispose();
     super.dispose();
@@ -220,6 +231,39 @@ class _FriendsListTabState extends State<_FriendsListTab> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // ✅ Bug corrigé : avant, une coupure réseau affichait "Aucun ami" comme
+    // si la liste était vraiment vide, ce qui était trompeur.
+    if (friendsProvider.isOffline && friendsProvider.friends.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.wifi_off, size: 80, color: AppColors.gray300),
+              const SizedBox(height: 16),
+              Text(
+                'Pas de connexion',
+                style: TextStyle(fontSize: 18, color: AppColors.gray500, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Impossible de charger vos amis pour le moment.',
+                style: TextStyle(fontSize: 14, color: AppColors.gray400),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () => friendsProvider.loadFriends(),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Réessayer'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (friendsProvider.friends.isEmpty) {
       return Center(
         child: Column(
@@ -370,6 +414,15 @@ class _PendingRequestsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final friendsProvider = Provider.of<FriendsProvider>(context);
 
+    // ✅ Bug corrigé : une coupure réseau affichait "Aucune demande en
+    // attente" comme si elles n'existaient vraiment pas.
+    if (friendsProvider.isPendingRequestsOffline && friendsProvider.pendingRequests.isEmpty) {
+      return OfflineState(
+        message: 'Impossible de charger vos demandes d\'amis.',
+        onRetry: () => friendsProvider.loadPendingRequests(),
+      );
+    }
+
     if (friendsProvider.pendingRequests.isEmpty) {
       return Center(
         child: Column(
@@ -408,6 +461,15 @@ class _DuelInvitationsTab extends StatelessWidget {
 
     if (duelProvider.isLoading) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    // ✅ Bug corrigé : une coupure réseau affichait "Aucune invitation de
+    // duel" comme si elles n'existaient vraiment pas.
+    if (duelProvider.isInvitationsOffline && duelProvider.pendingInvitations.isEmpty) {
+      return OfflineState(
+        message: 'Impossible de charger vos invitations de duel.',
+        onRetry: () => duelProvider.loadPendingDuelInvitations(),
+      );
     }
 
     if (duelProvider.pendingInvitations.isEmpty) {

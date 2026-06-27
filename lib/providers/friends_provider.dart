@@ -1,8 +1,20 @@
 import 'package:flutter/material.dart';
 import '../models/friend_model.dart';
 import '../services/api_service.dart';
+import '../services/offline_service.dart';
 
 class FriendsProvider with ChangeNotifier {
+  FriendsProvider() {
+    // ✅ Bug corrigé : sans ça, un échec de chargement (même bref) au tout
+    // premier passage sur l'onglet Amis restait figé sur "Pas de
+    // connexion" pour le reste de la session, même après le retour réel
+    // du réseau.
+    OfflineService.registerReconnectCallback(() async {
+      if (_isOffline) await loadFriends();
+      if (_isPendingRequestsOffline) await loadPendingRequests();
+    });
+  }
+
   List<FriendModel> _friends = [];
   List<FriendRequest> _pendingRequests = [];
   List<FriendModel> _searchResults = [];
@@ -10,6 +22,9 @@ class FriendsProvider with ChangeNotifier {
   bool _isLoading = false;
   bool _isSearching = false;
   String? _errorMessage;
+  // ✅ NOUVEAU : distingue "pas de connexion" de "vraiment aucun ami".
+  bool _isOffline = false;
+  bool _isPendingRequestsOffline = false; // ✅ NOUVEAU
   
   final ApiService _apiService = ApiService();
   
@@ -20,6 +35,8 @@ class FriendsProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isSearching => _isSearching;
   String? get errorMessage => _errorMessage;
+  bool get isOffline => _isOffline;
+  bool get isPendingRequestsOffline => _isPendingRequestsOffline;
   int get friendCount => _friends.length;
   int get pendingCount => _pendingRequests.length;
   
@@ -27,6 +44,7 @@ class FriendsProvider with ChangeNotifier {
   Future<void> loadFriends() async {
     _isLoading = true;
     _errorMessage = null;
+    _isOffline = false;
     notifyListeners();
     
     try {
@@ -49,6 +67,11 @@ class FriendsProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
+      // ✅ Bug corrigé : avant, une coupure réseau affichait "Aucun ami"
+      // comme si la liste était réellement vide. On garde maintenant la
+      // dernière liste connue en mémoire et on signale clairement qu'il
+      // s'agit d'un problème de connexion, pas d'une absence d'amis.
+      _isOffline = e is ApiException && e.isOffline;
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       debugPrint('loadFriends error: $e');
       _isLoading = false;
@@ -58,24 +81,33 @@ class FriendsProvider with ChangeNotifier {
   
   // Load pending requests
   Future<void> loadPendingRequests() async {
+    _isPendingRequestsOffline = false;
     try {
       final response = await _apiService.get('/social/friends/pending');
       _pendingRequests = (response as List).map((r) => FriendRequest.fromJson(r)).toList();
       notifyListeners();
     } catch (e) {
+      // ✅ Bug corrigé : une coupure réseau affichait "Aucune demande" comme
+      // si elles n'existaient vraiment pas.
+      _isPendingRequestsOffline = e is ApiException && e.isOffline;
       print('Error loading pending requests: $e');
+      notifyListeners();
     }
   }
   
   // Search users
+  bool _isSearchOffline = false; // ✅ NOUVEAU
+
   Future<void> searchUsers(String query) async {
     if (query.length < 2) {
       _searchResults = [];
+      _isSearchOffline = false;
       notifyListeners();
       return;
     }
     
     _isSearching = true;
+    _isSearchOffline = false;
     notifyListeners();
     
     try {
@@ -85,10 +117,16 @@ class FriendsProvider with ChangeNotifier {
       _isSearching = false;
       notifyListeners();
     } catch (e) {
+      // ✅ Bug corrigé : une coupure réseau pendant une recherche affichait
+      // "Aucun utilisateur trouvé", comme si ce pseudo/cet ID n'existait
+      // tout simplement pas — alors qu'on ne pouvait juste pas vérifier.
+      _isSearchOffline = e is ApiException && e.isOffline;
       _isSearching = false;
       notifyListeners();
     }
   }
+  
+  bool get isSearchOffline => _isSearchOffline;
   
   // Send friend request
   Future<bool> sendFriendRequest(int friendId) async {

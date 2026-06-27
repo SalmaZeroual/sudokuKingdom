@@ -15,41 +15,68 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> {
+class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   int? selectedRow;
   int? selectedCol;
-  
+
   @override
   void initState() {
     super.initState();
-    
+    WidgetsBinding.instance.addObserver(this);
+
     Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
-      
+
       final gameProvider = Provider.of<GameProvider>(context, listen: false);
-      
+
       if (gameProvider.isGameOver) {
         timer.cancel();
         _showGameOverDialog();
       }
-      
+
       if (gameProvider.isCompleted) {
         timer.cancel();
         _showVictoryDialog();
       }
     });
   }
-  
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      gameProvider.pauseGame();
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      gameProvider.resumeGame();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final gameProvider = Provider.of<GameProvider>(context);
-    
+
     return WillPopScope(
       onWillPop: () async {
         final shouldPop = await _showExitDialog(context);
+        if (shouldPop == true) {
+          final gameProvider =
+              Provider.of<GameProvider>(context, listen: false);
+          await gameProvider.pauseGame();
+        }
         return shouldPop ?? false;
       },
       child: Scaffold(
@@ -60,6 +87,9 @@ class _GameScreenState extends State<GameScreen> {
             onPressed: () async {
               final shouldExit = await _showExitDialog(context);
               if (shouldExit == true && context.mounted) {
+                final gameProvider =
+                    Provider.of<GameProvider>(context, listen: false);
+                await gameProvider.pauseGame();
                 Navigator.of(context).pop();
               }
             },
@@ -78,12 +108,14 @@ class _GameScreenState extends State<GameScreen> {
               onPressed: () {
                 gameProvider.toggleNoteMode();
               },
-              tooltip: gameProvider.isNoteMode ? 'Mode notes activé' : 'Activer mode notes',
+              tooltip: gameProvider.isNoteMode
+                  ? 'Mode notes activé'
+                  : 'Activer mode notes',
             ),
             IconButton(
               icon: const Icon(Icons.pause),
-              onPressed: () {
-                gameProvider.pauseGame();
+              onPressed: () async {
+                await gameProvider.pauseGame();
                 _showPauseDialog(context);
               },
             ),
@@ -133,12 +165,13 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                       ],
                     ),
-                    
+
                     // Note mode indicator
                     if (gameProvider.isNoteMode) ...[
                       const SizedBox(height: 12),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
                           color: AppColors.blue.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -164,7 +197,7 @@ class _GameScreenState extends State<GameScreen> {
                   ],
                 ),
               ),
-              
+
               // Sudoku Grid
               Expanded(
                 child: Center(
@@ -188,7 +221,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 ),
               ),
-              
+
               // Number Pad
               NumberPad(
                 isNoteMode: gameProvider.isNoteMode,
@@ -198,7 +231,8 @@ class _GameScreenState extends State<GameScreen> {
                     if (number == 0) {
                       gameProvider.clearCell(selectedRow!, selectedCol!);
                     } else {
-                      gameProvider.setCellValue(selectedRow!, selectedCol!, number);
+                      gameProvider.setCellValue(
+                          selectedRow!, selectedCol!, number);
                     }
                   }
                 },
@@ -219,7 +253,8 @@ class _GameScreenState extends State<GameScreen> {
       if (used) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('💡 Indice utilisé ! Il en reste ${gameProvider.hintsRemaining}'),
+            content: Text(
+                '💡 Indice utilisé ! Il en reste ${gameProvider.hintsRemaining}'),
             backgroundColor: AppColors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -268,7 +303,7 @@ class _GameScreenState extends State<GameScreen> {
       );
     }
   }
-  
+
   String _getDifficultyLabel(String difficulty) {
     switch (difficulty.toLowerCase()) {
       case 'facile':
@@ -283,7 +318,7 @@ class _GameScreenState extends State<GameScreen> {
         return difficulty;
     }
   }
-  
+
   Color _getDifficultyColor(String difficulty) {
     switch (difficulty.toLowerCase()) {
       case 'facile':
@@ -298,10 +333,10 @@ class _GameScreenState extends State<GameScreen> {
         return AppColors.gray500;
     }
   }
-  
+
   void _showGameOverDialog() {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -316,7 +351,8 @@ class _GameScreenState extends State<GameScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.sentiment_very_dissatisfied, size: 80, color: AppColors.red),
+            Icon(Icons.sentiment_very_dissatisfied,
+                size: 80, color: AppColors.red),
             SizedBox(height: 16),
             Text(
               '3 erreurs atteintes !',
@@ -345,7 +381,8 @@ class _GameScreenState extends State<GameScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Temps:', style: TextStyle(color: AppColors.gray500)),
+                      Text('Temps:',
+                          style: TextStyle(color: AppColors.gray500)),
                       Text(
                         gameProvider.formattedTime,
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -356,10 +393,12 @@ class _GameScreenState extends State<GameScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Erreurs:', style: TextStyle(color: AppColors.gray500)),
+                      Text('Erreurs:',
+                          style: TextStyle(color: AppColors.gray500)),
                       Text(
                         '${gameProvider.mistakes}',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.red),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: AppColors.red),
                       ),
                     ],
                   ),
@@ -372,7 +411,7 @@ class _GameScreenState extends State<GameScreen> {
           TextButton(
             onPressed: () async {
               await gameProvider.abandonGame();
-              
+
               if (context.mounted) {
                 Navigator.of(context).pop();
                 Navigator.of(context).pop();
@@ -384,10 +423,11 @@ class _GameScreenState extends State<GameScreen> {
             onPressed: () {
               gameProvider.continueWithAd();
               Navigator.of(context).pop();
-              
+
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('📺 Publicité regardée - Vous avez une nouvelle chance !'),
+                  content: Text(
+                      '📺 Publicité regardée - Vous avez une nouvelle chance !'),
                   backgroundColor: AppColors.green,
                 ),
               );
@@ -403,16 +443,17 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
-  
+
   Future<void> _showNewGameDialog(BuildContext context) {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
-    
+
     return showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.orange, size: 28),
+            Icon(Icons.warning_amber_rounded,
+                color: AppColors.orange, size: 28),
             SizedBox(width: 12),
             Text('Nouvelle partie ?'),
           ],
@@ -463,10 +504,13 @@ class _GameScreenState extends State<GameScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Temps écoulé:', style: TextStyle(color: AppColors.gray500, fontSize: 13)),
+                      Text('Temps écoulé:',
+                          style: TextStyle(
+                              color: AppColors.gray500, fontSize: 13)),
                       Text(
                         gameProvider.formattedTime,
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ],
                   ),
@@ -474,10 +518,13 @@ class _GameScreenState extends State<GameScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Erreurs:', style: TextStyle(color: AppColors.gray500, fontSize: 13)),
+                      Text('Erreurs:',
+                          style: TextStyle(
+                              color: AppColors.gray500, fontSize: 13)),
                       Text(
                         '${gameProvider.mistakes}',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ],
                   ),
@@ -494,7 +541,7 @@ class _GameScreenState extends State<GameScreen> {
           ElevatedButton(
             onPressed: () async {
               await gameProvider.abandonGame();
-              
+
               if (context.mounted) {
                 Navigator.of(context).pop();
                 Navigator.of(context).pop();
@@ -513,7 +560,7 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
-  
+
   Future<bool?> _showExitDialog(BuildContext context) {
     return showDialog<bool>(
       context: context,
@@ -533,7 +580,7 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
-  
+
   void _showPauseDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -544,7 +591,8 @@ class _GameScreenState extends State<GameScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              final gameProvider = Provider.of<GameProvider>(context, listen: false);
+              final gameProvider =
+                  Provider.of<GameProvider>(context, listen: false);
               gameProvider.resumeGame();
               Navigator.of(context).pop();
             },
@@ -554,11 +602,11 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
-  
+
   void _showVictoryDialog() {
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -666,7 +714,7 @@ class _GameScreenState extends State<GameScreen> {
           ElevatedButton(
             onPressed: () async {
               await gameProvider.abandonGame();
-              
+
               if (context.mounted) {
                 Navigator.of(context).pop();
                 Navigator.of(context).pop();
@@ -693,7 +741,7 @@ class _GameStat extends StatelessWidget {
   final String value;
   final bool isError;
   final Color? color;
-  
+
   const _GameStat({
     required this.icon,
     required this.label,
@@ -701,7 +749,7 @@ class _GameStat extends StatelessWidget {
     this.isError = false,
     this.color,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return Column(

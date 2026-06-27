@@ -4,17 +4,21 @@ import 'dart:math';
 import '../models/game_model.dart';
 import '../models/booster_model.dart';
 import '../services/api_service.dart';
+import '../services/offline_service.dart';
+import '../config/constants.dart';
 import '../providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
 class GameProvider with ChangeNotifier {
   GameModel? _currentGame;
+  String _gameMode = AppConstants.modeClassic;
+  String _savedDifficulty = 'moyen';
   List<List<int>> _playerGrid = [];
   List<List<int>> _solutionGrid = [];
   List<List<bool>> _initialCells = [];
   List<List<bool>> _errorCells = [];
   List<List<Set<int>>> _notes = [];
-  
+
   Timer? _timer;
   Timer? _autoSaveTimer;
   int _elapsedSeconds = 0;
@@ -23,18 +27,22 @@ class GameProvider with ChangeNotifier {
   bool _isLoading = false;
   bool _isNoteMode = false;
   bool _isPaused = false;
-  
+
   // ✅ Game Over state
   bool _isGameOver = false;
 
   // ✅ NOUVEAU: Indices
   int _hintsRemaining = 3;
-  
+
   List<BoosterModel> _boosters = [];
   String? _selectedBooster;
-  
+
+  // ✅ NOUVEAU: identifiant du chapitre en cours (mode Énigme), utilisé
+  // pour retrouver/reprendre la bonne sauvegarde locale
+  int? _currentChapterId;
+
   final ApiService _apiService = ApiService();
-  
+
   // Getters
   GameModel? get currentGame => _currentGame;
   List<List<int>> get playerGrid => _playerGrid;
@@ -45,76 +53,83 @@ class GameProvider with ChangeNotifier {
   int get mistakes => _mistakes;
   bool get isLoading => _isLoading;
   bool get isNoteMode => _isNoteMode;
-  bool get isGameOver => _isGameOver; 
+  bool get isGameOver => _isGameOver;
   List<BoosterModel> get boosters => _boosters;
   String? get selectedBooster => _selectedBooster;
-  String get difficulty => _currentGame?.difficulty ?? 'moyen';
+  String get difficulty => _currentGame?.difficulty ?? _savedDifficulty;
+  String get mode => _currentGame?.mode ?? _gameMode;
   // ✅ NOUVEAU: Getter indices
   int get hintsRemaining => _hintsRemaining;
 
-  
   bool get isCompleted {
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 9; j++) {
         if (_playerGrid[i][j] == 0) return false;
-        
+
         if (_solutionGrid.isNotEmpty) {
           if (_playerGrid[i][j] != _solutionGrid[i][j]) return false;
         }
       }
     }
-    
+
     if (_solutionGrid.isEmpty) {
       return _validateSudoku();
     }
-    
+
     return true;
   }
-  
+
   String get formattedTime {
     final hours = _elapsedSeconds ~/ 3600;
     final minutes = (_elapsedSeconds % 3600) ~/ 60;
     final seconds = _elapsedSeconds % 60;
-    
+
     if (hours > 0) {
       return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
-  
+
   void toggleNoteMode() {
     _isNoteMode = !_isNoteMode;
     notifyListeners();
   }
-  
+
   // Initialize game for Story Mode
-  void initializeStoryGame(List<List<int>> grid, List<List<int>> solution) {
+  void initializeStoryGame(List<List<int>> grid, List<List<int>> solution,
+      {int? chapterId}) {
     print('🎮 Initializing story game...');
 
     _currentGame = null;
+    _gameMode = AppConstants.modeStory;
+    _savedDifficulty = 'story';
+    _currentChapterId = chapterId;
 
-    _playerGrid   = List.generate(9, (i) => List<int>.from(grid[i]));
+    _playerGrid = List.generate(9, (i) => List<int>.from(grid[i]));
     _solutionGrid = List.generate(9, (i) => List<int>.from(solution[i]));
 
-    _initialCells = List.generate(9, (i) => List.generate(9, (j) => grid[i][j] != 0));
-    _errorCells   = List.generate(9, (_) => List.generate(9, (_) => false));
-    _notes        = List.generate(9, (_) => List.generate(9, (_) => <int>{}));
+    _initialCells =
+        List.generate(9, (i) => List.generate(9, (j) => grid[i][j] != 0));
+    _errorCells = List.generate(9, (_) => List.generate(9, (_) => false));
+    _notes = List.generate(9, (_) => List.generate(9, (_) => <int>{}));
 
-    _mistakes     = 0;
-    _isNoteMode   = false;
-    _isPaused     = false;
-    _isGameOver   = false;
+    _mistakes = 0;
+    _isNoteMode = false;
+    _isPaused = false;
+    _isGameOver = false;
     _hintsRemaining = 3;
 
     // ✅ Bug corrigé : _isCompleted n'était pas remis à false lors du passage
     // au chapitre suivant. setCellValue bloque si _isCompleted = true →
     // le clavier était muet sur tous les chapitres après le premier.
-    _isCompleted  = false;
+    _isCompleted = false;
 
     print('✅ Story game initialized for new chapter');
     notifyListeners();
+    _startAutoSave();
+    Future.microtask(() => _saveProgress());
   }
-  
+
   bool _validateSudoku() {
     for (int i = 0; i < 9; i++) {
       final seen = <int>{};
@@ -125,7 +140,7 @@ class GameProvider with ChangeNotifier {
         }
       }
     }
-    
+
     for (int j = 0; j < 9; j++) {
       final seen = <int>{};
       for (int i = 0; i < 9; i++) {
@@ -135,12 +150,12 @@ class GameProvider with ChangeNotifier {
         }
       }
     }
-    
+
     for (int box = 0; box < 9; box++) {
       final seen = <int>{};
       final startRow = (box ~/ 3) * 3;
       final startCol = (box % 3) * 3;
-      
+
       for (int i = startRow; i < startRow + 3; i++) {
         for (int j = startCol; j < startCol + 3; j++) {
           if (_playerGrid[i][j] != 0) {
@@ -150,35 +165,37 @@ class GameProvider with ChangeNotifier {
         }
       }
     }
-    
+
     return true;
   }
-  
+
   Future<bool> checkForActiveGame() async {
     try {
       _isLoading = true;
       notifyListeners();
-      
+
       final response = await _apiService.get('/game/active');
-      
+
       if (response['game'] != null) {
         _currentGame = GameModel.fromJson(response['game']);
-        _playerGrid = _currentGame!.grid.map((row) => List<int>.from(row)).toList();
-        _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentGame!.grid[i][j] != 0));
+        _playerGrid =
+            _currentGame!.grid.map((row) => List<int>.from(row)).toList();
+        _initialCells = List.generate(
+            9, (i) => List.generate(9, (j) => _currentGame!.grid[i][j] != 0));
         _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
         _notes = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
         _elapsedSeconds = _currentGame!.timeElapsed;
         _mistakes = _currentGame!.mistakes;
         _isCompleted = false;
         _isGameOver = false;
-        
+
         await loadBoosters();
-        
+
         _isLoading = false;
         notifyListeners();
         return true;
       }
-      
+
       _isLoading = false;
       notifyListeners();
       return false;
@@ -189,8 +206,9 @@ class GameProvider with ChangeNotifier {
       return false;
     }
   }
-  
-  Future<void> startNewGame(String mode, String difficulty, {BuildContext? context}) async {
+
+  Future<void> startNewGame(String mode, String difficulty,
+      {BuildContext? context}) async {
     try {
       _isLoading = true;
       notifyListeners();
@@ -210,54 +228,64 @@ class GameProvider with ChangeNotifier {
         });
 
         _currentGame = GameModel.fromJson(response);
-        _playerGrid   = _currentGame!.grid.map((row) => List<int>.from(row)).toList();
-        _solutionGrid = _currentGame!.solution.map((row) => List<int>.from(row)).toList();
-        _initialCells = List.generate(9, (i) => List.generate(9, (j) => _currentGame!.grid[i][j] != 0));
+        _playerGrid =
+            _currentGame!.grid.map((row) => List<int>.from(row)).toList();
+        _solutionGrid =
+            _currentGame!.solution.map((row) => List<int>.from(row)).toList();
+        _initialCells = List.generate(
+            9, (i) => List.generate(9, (j) => _currentGame!.grid[i][j] != 0));
 
         await loadBoosters();
       } else {
         // ── Invité : génération locale ────────────────────────────
         _currentGame = null;
         final generated = _generateLocalGrid(difficulty);
-        _playerGrid   = generated['grid']!;
+        _playerGrid = generated['grid']!;
         _solutionGrid = generated['solution']!;
-        _initialCells = List.generate(9, (i) => List.generate(9, (j) => _playerGrid[i][j] != 0));
-        _boosters     = []; // pas de boosters en mode invité
+        _initialCells = List.generate(
+            9, (i) => List.generate(9, (j) => _playerGrid[i][j] != 0));
+        _boosters = []; // pas de boosters en mode invité
       }
 
-      _errorCells     = List.generate(9, (i) => List.generate(9, (j) => false));
-      _notes          = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
+      _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
+      _notes = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
       _elapsedSeconds = 0;
-      _mistakes       = 0;
-      _isCompleted    = false;
-      _isNoteMode     = false;
-      _isGameOver     = false;
+      _mistakes = 0;
+      _isCompleted = false;
+      _isNoteMode = false;
+      _isGameOver = false;
       _hintsRemaining = 3;
+      _gameMode = mode;
+      _savedDifficulty = difficulty;
+      _currentChapterId = null;
 
       _startTimer();
       _startAutoSave();
 
       _isLoading = false;
       notifyListeners();
+      await _saveProgress();
     } catch (e) {
       print('Error starting game: $e');
       // ✅ GUEST fallback: si API échoue, générer localement quand même
       try {
         final generated = _generateLocalGrid(difficulty);
-        _playerGrid   = generated['grid']!;
+        _playerGrid = generated['grid']!;
         _solutionGrid = generated['solution']!;
-        _initialCells = List.generate(9, (i) => List.generate(9, (j) => _playerGrid[i][j] != 0));
-        _errorCells   = List.generate(9, (i) => List.generate(9, (j) => false));
-        _notes        = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
+        _initialCells = List.generate(
+            9, (i) => List.generate(9, (j) => _playerGrid[i][j] != 0));
+        _errorCells = List.generate(9, (i) => List.generate(9, (j) => false));
+        _notes = List.generate(9, (i) => List.generate(9, (j) => <int>{}));
         _elapsedSeconds = 0;
-        _mistakes       = 0;
-        _isCompleted    = false;
-        _isNoteMode     = false;
-        _isGameOver     = false;
+        _mistakes = 0;
+        _isCompleted = false;
+        _isNoteMode = false;
+        _isGameOver = false;
         _hintsRemaining = 3;
-        _boosters       = [];
+        _boosters = [];
         _startTimer();
         _startAutoSave();
+        await _saveProgress();
       } catch (e2) {
         print('Local generation also failed: $e2');
       }
@@ -270,7 +298,7 @@ class GameProvider with ChangeNotifier {
 
   Map<String, List<List<int>>> _generateLocalGrid(String difficulty) {
     final solution = _buildSolution();
-    final grid     = _removeClues(solution, difficulty);
+    final grid = _removeClues(solution, difficulty);
     return {'grid': grid, 'solution': solution};
   }
 
@@ -313,27 +341,37 @@ class GameProvider with ChangeNotifier {
   }
 
   List<List<int>> _removeClues(List<List<int>> solution, String difficulty) {
-    final empty = {'facile': 30, 'moyen': 40, 'difficile': 50, 'extreme': 58}[difficulty] ?? 40;
-    final grid  = solution.map((r) => List<int>.from(r)).toList();
-    final rng   = Random();
+    final empty = {
+          'facile': 30,
+          'moyen': 40,
+          'difficile': 50,
+          'extreme': 58
+        }[difficulty] ??
+        40;
+    final grid = solution.map((r) => List<int>.from(r)).toList();
+    final rng = Random();
     int removed = 0;
     while (removed < empty) {
       final r = rng.nextInt(9), c = rng.nextInt(9);
-      if (grid[r][c] != 0) { grid[r][c] = 0; removed++; }
+      if (grid[r][c] != 0) {
+        grid[r][c] = 0;
+        removed++;
+      }
     }
     return grid;
   }
-  
+
   Future<void> loadBoosters() async {
     try {
       final response = await _apiService.get('/game/boosters');
-      _boosters = (response as List).map((b) => BoosterModel.fromJson(b)).toList();
+      _boosters =
+          (response as List).map((b) => BoosterModel.fromJson(b)).toList();
       notifyListeners();
     } catch (e) {
       print('Error loading boosters: $e');
     }
   }
-  
+
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -341,17 +379,22 @@ class GameProvider with ChangeNotifier {
       notifyListeners();
     });
   }
-  
+
   void _startAutoSave() {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _saveProgress();
     });
   }
-  
+
   Future<void> _saveProgress() async {
-    if (_currentGame == null || _isCompleted || _isGameOver) return;
-    
+    if (_isCompleted || _isGameOver) return;
+
+    if (_currentGame == null) {
+      await _saveOfflineProgress();
+      return;
+    }
+
     try {
       await _apiService.post('/game/${_currentGame!.id}/save', {
         'grid': _playerGrid,
@@ -361,27 +404,126 @@ class GameProvider with ChangeNotifier {
       print('✅ Progress auto-saved');
     } catch (e) {
       print('❌ Error saving progress: $e');
+    } finally {
+      await _saveOfflineProgress();
     }
   }
-  
-  void pauseGame() {
+
+  Future<void> _saveOfflineProgress() async {
+    try {
+      await OfflineService.instance.saveCurrentGame({
+        'mode': _gameMode,
+        'difficulty': _savedDifficulty,
+        'chapter_id': _currentChapterId,
+        'grid': _playerGrid,
+        'solution': _solutionGrid,
+        'initial_cells': _initialCells,
+        'time_elapsed': _elapsedSeconds,
+        'mistakes': _mistakes,
+        'hints_remaining': _hintsRemaining,
+        'notes': _notes
+            .map((row) => row.map((cellNotes) => cellNotes.toList()).toList())
+            .toList(),
+      });
+      print('✅ Progress saved localement');
+    } catch (e) {
+      print('❌ Error saving offline progress: $e');
+    }
+  }
+
+  Future<bool> loadSavedGame({String? mode, String? difficulty, int? chapterId}) async {
+    final saved = await OfflineService.instance.loadCurrentGame(
+      mode: mode,
+      difficulty: difficulty,
+      chapterId: chapterId,
+    );
+    if (saved == null) return false;
+
+    try {
+      _currentGame = null;
+      _gameMode = saved['mode'] as String? ?? AppConstants.modeClassic;
+      _savedDifficulty = saved['difficulty'] as String? ?? 'moyen';
+      _currentChapterId = saved['chapter_id'] as int?;
+      _playerGrid = (saved['grid'] as List)
+          .map((row) => List<int>.from(row as List))
+          .toList();
+      _solutionGrid = (saved['solution'] as List)
+          .map((row) => List<int>.from(row as List))
+          .toList();
+      _initialCells = (saved['initial_cells'] as List)
+          .map((row) => (row as List).map((value) => value as bool).toList())
+          .toList();
+      _errorCells = List.generate(9, (_) => List.generate(9, (_) => false));
+      _notes = (saved['notes'] as List)
+          .map((row) => (row as List)
+              .map((cell) => Set<int>.from((cell as List).map((n) => n as int)))
+              .toList())
+          .toList();
+      _elapsedSeconds = saved['time_elapsed'] as int? ?? 0;
+      _mistakes = saved['mistakes'] as int? ?? 0;
+      _hintsRemaining = saved['hints_remaining'] as int? ?? 3;
+      _isCompleted = false;
+      _isGameOver = false;
+      _isNoteMode = false;
+      _isPaused = false;
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      print('❌ Error loading saved game: $e');
+      return false;
+    }
+  }
+
+  // ✅ NOUVEAU: vérifie s'il existe une partie sauvegardée correspondant au
+  // mode (et, selon le cas, à la difficulté ou au chapitre) demandé, et la
+  // reprend si c'est le cas — au lieu d'en démarrer une nouvelle et de
+  // perdre la progression de l'utilisateur.
+  // Retourne `true` si une partie a bien été reprise.
+  Future<bool> tryResumeGame({
+    required String mode,
+    String? difficulty,
+    int? chapterId,
+  }) async {
+    final saved = await OfflineService.instance.loadCurrentGame(
+      mode: mode,
+      difficulty: difficulty,
+      chapterId: chapterId,
+    );
+    if (saved == null) return false;
+
+    final loaded = await loadSavedGame(mode: mode, difficulty: difficulty, chapterId: chapterId);
+    if (!loaded) return false;
+
+    _startTimer();
+    _startAutoSave();
+    notifyListeners();
+    print('✅ Partie reprise (mode=$mode)');
+    return true;
+  }
+
+
+
+  Future<void> pauseGame() async {
     _timer?.cancel();
     _autoSaveTimer?.cancel();
-    _saveProgress();
+    await _saveProgress();
     notifyListeners();
   }
-  
+
   void resumeGame() {
-    if (_currentGame != null && !_isCompleted && !_isGameOver) {
+    if ((_currentGame != null || _playerGrid.isNotEmpty) &&
+        !_isCompleted &&
+        !_isGameOver) {
       _startTimer();
       _startAutoSave();
       notifyListeners();
     }
   }
-  
+
   Future<void> setCellValue(int row, int col, int value) async {
     if (_initialCells[row][col] || _isCompleted || _isGameOver) return;
-    
+
     if (_isNoteMode) {
       if (_notes[row][col].contains(value)) {
         _notes[row][col].remove(value);
@@ -391,20 +533,20 @@ class GameProvider with ChangeNotifier {
     } else {
       _playerGrid[row][col] = value;
       _notes[row][col].clear();
-      
-      int correctValue = _solutionGrid.isNotEmpty 
-          ? _solutionGrid[row][col] 
+
+      int correctValue = _solutionGrid.isNotEmpty
+          ? _solutionGrid[row][col]
           : _currentGame!.solution[row][col];
-      
+
       if (value != 0 && value != correctValue) {
         _errorCells[row][col] = true;
         _mistakes++;
-        
+
         if (_mistakes >= 3) {
           _triggerGameOver();
           return;
         }
-        
+
         Future.delayed(const Duration(seconds: 1), () {
           if (_errorCells.length > row && _errorCells[row].length > col) {
             _errorCells[row][col] = false;
@@ -416,34 +558,37 @@ class GameProvider with ChangeNotifier {
           _errorCells[row][col] = false;
         }
       }
-      
+
       if (_checkCompletion()) {
         await _completeGame();
       }
     }
-    
+
     notifyListeners();
+    if (!_isCompleted && !_isGameOver) {
+      _saveProgress();
+    }
   }
-  
+
   void _triggerGameOver() {
     _isGameOver = true;
     _timer?.cancel();
     _autoSaveTimer?.cancel();
-    
+
     print('💀 GAME OVER! 3 erreurs atteintes.');
-    
+
     notifyListeners();
   }
-  
+
   void continueWithAd() {
     _isGameOver = false;
     _mistakes = 2;
-    
+
     _startTimer();
     _startAutoSave();
-    
+
     print('📺 Pub regardée - Jeu repris avec 2 erreurs');
-    
+
     notifyListeners();
   }
 
@@ -464,6 +609,9 @@ class GameProvider with ChangeNotifier {
           _hintsRemaining--;
 
           notifyListeners();
+          if (!_isCompleted && !_isGameOver) {
+            _saveProgress();
+          }
           return true;
         }
       }
@@ -476,26 +624,29 @@ class GameProvider with ChangeNotifier {
     _hintsRemaining = 1;
     notifyListeners();
   }
-  
+
   void clearCell(int row, int col) {
     if (_initialCells[row][col] || _isCompleted || _isGameOver) return;
-    
+
     _playerGrid[row][col] = 0;
     _notes[row][col].clear();
     _errorCells[row][col] = false;
-    
+
     notifyListeners();
+    if (!_isCompleted && !_isGameOver) {
+      Future.microtask(() => _saveProgress());
+    }
   }
-  
+
   bool _checkCompletion() {
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 9; j++) {
         if (_playerGrid[i][j] == 0) return false;
-        
-        int correctValue = _solutionGrid.isNotEmpty 
-            ? _solutionGrid[i][j] 
+
+        int correctValue = _solutionGrid.isNotEmpty
+            ? _solutionGrid[i][j]
             : _currentGame!.solution[i][j];
-            
+
         if (_playerGrid[i][j] != correctValue) {
           return false;
         }
@@ -503,12 +654,12 @@ class GameProvider with ChangeNotifier {
     }
     return true;
   }
-  
+
   Future<void> _completeGame() async {
     _isCompleted = true;
     _timer?.cancel();
     _autoSaveTimer?.cancel();
-    
+
     if (_currentGame != null) {
       try {
         await _apiService.post('/game/${_currentGame!.id}/complete', {
@@ -518,37 +669,46 @@ class GameProvider with ChangeNotifier {
       } catch (e) {
         print('Error completing game: $e');
       }
+    } else {
+      // ✅ On supprime uniquement la sauvegarde de CETTE difficulté/chapitre,
+      // pas toutes les parties en cours dans les autres modes.
+      await OfflineService.instance.clearCurrentGame(
+        mode: _gameMode,
+        difficulty: _savedDifficulty,
+        chapterId: _currentChapterId,
+      );
     }
-    
+
     notifyListeners();
   }
-  
+
   void selectBooster(String boosterType) {
     _selectedBooster = boosterType;
     notifyListeners();
   }
-  
+
   Future<void> useBooster(String boosterType, {int? row, int? col}) async {
     final booster = _boosters.firstWhere(
       (b) => b.boosterType == boosterType,
-      orElse: () => BoosterModel(id: 0, userId: 0, boosterType: boosterType, quantity: 0),
+      orElse: () =>
+          BoosterModel(id: 0, userId: 0, boosterType: boosterType, quantity: 0),
     );
-    
+
     if (booster.quantity <= 0) return;
-    
+
     switch (boosterType) {
       case 'reveal_cell':
         if (row != null && col != null && !_initialCells[row][col]) {
-          int correctValue = _solutionGrid.isNotEmpty 
-              ? _solutionGrid[row][col] 
+          int correctValue = _solutionGrid.isNotEmpty
+              ? _solutionGrid[row][col]
               : _currentGame!.solution[row][col];
-          
+
           _playerGrid[row][col] = correctValue;
           _initialCells[row][col] = true;
           _notes[row][col].clear();
         }
         break;
-        
+
       case 'freeze_time':
         _timer?.cancel();
         _autoSaveTimer?.cancel();
@@ -557,15 +717,15 @@ class GameProvider with ChangeNotifier {
           _startAutoSave();
         });
         break;
-        
+
       case 'swap_cells':
         for (int i = 0; i < 9; i++) {
           for (int j = 0; j < 9; j++) {
             if (!_initialCells[i][j] && _playerGrid[i][j] != 0) {
-              int correctValue = _solutionGrid.isNotEmpty 
-                  ? _solutionGrid[i][j] 
+              int correctValue = _solutionGrid.isNotEmpty
+                  ? _solutionGrid[i][j]
                   : _currentGame!.solution[i][j];
-              
+
               if (_playerGrid[i][j] != correctValue) {
                 _playerGrid[i][j] = correctValue;
                 _notes[i][j].clear();
@@ -576,12 +736,12 @@ class GameProvider with ChangeNotifier {
         }
         break;
     }
-    
+
     try {
       await _apiService.post('/game/use-booster', {
         'booster_type': boosterType,
       });
-      
+
       final index = _boosters.indexWhere((b) => b.boosterType == boosterType);
       if (index != -1) {
         _boosters[index] = BoosterModel(
@@ -594,20 +754,20 @@ class GameProvider with ChangeNotifier {
     } catch (e) {
       print('Error using booster: $e');
     }
-    
+
     _selectedBooster = null;
     notifyListeners();
   }
-  
+
   void clearSelection() {
     _selectedBooster = null;
     notifyListeners();
   }
-  
+
   Future<void> abandonGame() async {
     _timer?.cancel();
     _autoSaveTimer?.cancel();
-    
+
     if (_currentGame != null) {
       try {
         await _apiService.post('/game/${_currentGame!.id}/save', {
@@ -618,8 +778,16 @@ class GameProvider with ChangeNotifier {
       } catch (e) {
         print('Error saving before abandon: $e');
       }
+    } else if (!_isCompleted) {
+      // ✅ Bug corrigé : avant, on EFFAÇAIT la sauvegarde locale ici dès
+      // qu'on quittait l'écran (bouton retour, changement de difficulté,
+      // déconnexion...) — même si la partie n'était pas terminée ! C'est
+      // exactement l'inverse de ce qu'on veut : on doit SAUVEGARDER la
+      // progression pour pouvoir la reprendre plus tard (Classique ET
+      // Énigme), pas la supprimer.
+      await _saveOfflineProgress();
     }
-    
+
     _currentGame = null;
     _playerGrid = [];
     _solutionGrid = [];
@@ -635,10 +803,10 @@ class GameProvider with ChangeNotifier {
     _selectedBooster = null;
     _boosters = [];
     _hintsRemaining = 3; // ✅ NOUVEAU
-    
+
     notifyListeners();
   }
-  
+
   @override
   void dispose() {
     _timer?.cancel();

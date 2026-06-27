@@ -1,14 +1,35 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/story_model.dart';
 import '../services/api_service.dart';
+import '../services/offline_service.dart';
+
+// ✅ NOUVEAU : clés de cache local. Permettent de continuer à PARCOURIR et
+// JOUER les royaumes/chapitres déjà vus même sans connexion (avant, toute
+// la section Énigme redevenait inutilisable hors-ligne, y compris pour du
+// contenu déjà téléchargé).
+const _kCachedKingdoms = 'cached_story_kingdoms';
+const _kCachedChaptersPrefix = 'cached_story_chapters_';
 
 class StoryProvider with ChangeNotifier {
+  StoryProvider() {
+    // ✅ Même correction : l'Énigme se redonne une chance de charger les
+    // royaumes dès le retour réel du réseau, au lieu de rester bloquée sur
+    // "Pas de connexion" pour le reste de la session.
+    OfflineService.registerReconnectCallback(() async {
+      if (_isOffline) await loadKingdoms();
+    });
+  }
+
   List<KingdomModel> _kingdoms = [];
   List<StoryChapter> _chapters = [];
   List<int> _collectedArtifacts = [];
   StoryStatsModel _stats = StoryStatsModel();
   bool _isLoading = false;
   String? _errorMessage;
+  // ✅ NOUVEAU : pas de connexion (≠ vraiment aucun royaume/chapitre)
+  bool _isOffline = false;
   
   final ApiService _apiService = ApiService();
   
@@ -19,6 +40,7 @@ class StoryProvider with ChangeNotifier {
   StoryStatsModel get stats => _stats;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  bool get isOffline => _isOffline;
   
   // ==========================================
   // LOAD KINGDOMS - Charger tous les royaumes
@@ -27,6 +49,7 @@ class StoryProvider with ChangeNotifier {
   Future<void> loadKingdoms() async {
     _isLoading = true;
     _errorMessage = null;
+    _isOffline = false;
     notifyListeners();
     
     try {
@@ -41,11 +64,46 @@ class StoryProvider with ChangeNotifier {
       
       _isLoading = false;
       notifyListeners();
+
+      // ✅ On garde une copie locale pour pouvoir naviguer hors-ligne.
+      await _cacheKingdoms(response);
     } catch (error) {
-      _errorMessage = error.toString().replaceAll('Exception: ', '');
+      // ✅ Bug corrigé : avant, une coupure réseau rendait toute la section
+      // Énigme illisible (erreur générique, liste vide). On retombe
+      // maintenant sur la dernière liste de royaumes connue localement,
+      // avec un indicateur clair "Pas de connexion" plutôt qu'une erreur.
+      if (error is ApiException && error.isOffline) {
+        _isOffline = true;
+        final cached = await _loadCachedKingdoms();
+        if (cached != null) {
+          _kingdoms = (cached['kingdoms'] as List)
+              .map((k) => KingdomModel.fromJson(k))
+              .toList();
+          _collectedArtifacts = List<int>.from(cached['artifacts'] ?? []);
+          _stats = StoryStatsModel.fromJson(cached['stats']);
+        }
+      } else {
+        _errorMessage = error.toString().replaceAll('Exception: ', '');
+      }
       _isLoading = false;
       notifyListeners();
       print('Error loading kingdoms: $error');
+    }
+  }
+
+  Future<void> _cacheKingdoms(Map<String, dynamic> response) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kCachedKingdoms, jsonEncode(response));
+  }
+
+  Future<Map<String, dynamic>?> _loadCachedKingdoms() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kCachedKingdoms);
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
     }
   }
   
@@ -56,6 +114,7 @@ class StoryProvider with ChangeNotifier {
   Future<void> loadChapters(int kingdomId) async {
     _isLoading = true;
     _errorMessage = null;
+    _isOffline = false;
     notifyListeners();
     
     try {
@@ -67,8 +126,26 @@ class StoryProvider with ChangeNotifier {
       
       _isLoading = false;
       notifyListeners();
+
+      // ✅ Copie locale par royaume, pour pouvoir rejouer un chapitre déjà
+      // vu (et sa grille) même sans connexion.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('$_kCachedChaptersPrefix$kingdomId', jsonEncode(response));
     } catch (error) {
-      _errorMessage = error.toString().replaceAll('Exception: ', '');
+      if (error is ApiException && error.isOffline) {
+        _isOffline = true;
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString('$_kCachedChaptersPrefix$kingdomId');
+        if (raw != null) {
+          try {
+            _chapters = (jsonDecode(raw) as List)
+                .map((c) => StoryChapter.fromJson(c))
+                .toList();
+          } catch (_) {}
+        }
+      } else {
+        _errorMessage = error.toString().replaceAll('Exception: ', '');
+      }
       _isLoading = false;
       notifyListeners();
       print('Error loading chapters: $error');
@@ -128,9 +205,41 @@ class StoryProvider with ChangeNotifier {
         'kingdom_completed': response['kingdom_completed'],
       };
     } catch (error) {
+      // ✅ Bug corrigé : avant, terminer un chapitre hors-ligne perdait
+      // silencieusement la progression (XP, étoiles, artefact) — l'appel
+      // échouait et on faisait juste un print(). Maintenant, si c'est bien
+      // un problème de connexion, on met le résultat en attente : il sera
+      // automatiquement envoyé au serveur dès le retour du réseau, sans
+      // que l'utilisateur ait à refaire le chapitre.
+      if (error is ApiException && error.isOffline) {
+        await OfflineService.instance.enqueuePendingChapterCompletion(
+          chapterId: chapterId,
+          timeTaken: timeTaken,
+          mistakes: mistakes,
+        );
+        print('📥 Chapitre terminé hors-ligne, mis en attente de synchronisation');
+        return {
+          'success': true,
+          'offline': true,
+          'stars': null,
+          'xp_reward': null,
+          'artifact': null,
+          'kingdom_completed': false,
+        };
+      }
       print('Error completing chapter: $error');
       return null;
     }
+  }
+
+  // ✅ NOUVEAU : à appeler au démarrage de l'app ou quand le réseau revient,
+  // pour créditer les chapitres terminés hors-ligne en attente.
+  Future<int> syncPendingChapters() async {
+    final synced = await OfflineService.instance.syncPendingChapters();
+    if (synced > 0) {
+      await loadKingdoms();
+    }
+    return synced;
   }
   
   // ==========================================
