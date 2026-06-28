@@ -142,6 +142,45 @@ class StoryChapter {
     final seconds = timeTaken % 60;
     return '${minutes}:${seconds.toString().padLeft(2, '0')}';
   }
+
+  // ✅ Crée une copie avec la grille et la solution remplies (génération locale
+  // hors-ligne quand le cache ne contient pas la grille complète).
+  StoryChapter copyWithGrid({
+    required List<List<int>> grid,
+    required List<List<int>> solution,
+  }) {
+    return StoryChapter(
+      id: id, kingdomId: kingdomId, chapterId: chapterId,
+      title: title, description: description,
+      grid: grid, solution: solution,
+      difficulty: difficulty, chapterOrder: chapterOrder,
+      storyText: storyText, objectiveText: objectiveText,
+      isCompleted: isCompleted, isLocked: isLocked,
+      stars: stars, timeTaken: timeTaken, mistakes: mistakes,
+      completedAt: completedAt,
+    );
+  }
+
+  // ✅ Crée une copie avec la progression mise à jour (fusion cache local
+  // hors-ligne → liste des chapitres affichée).
+  StoryChapter copyWithProgress({
+    required bool isCompleted,
+    required int stars,
+    required int timeTaken,
+    required int mistakes,
+  }) {
+    return StoryChapter(
+      id: id, kingdomId: kingdomId, chapterId: chapterId,
+      title: title, description: description,
+      grid: grid, solution: solution,
+      difficulty: difficulty, chapterOrder: chapterOrder,
+      storyText: storyText, objectiveText: objectiveText,
+      isCompleted: isCompleted,
+      isLocked: false, // si on a une progression, c'est débloqué
+      stars: stars, timeTaken: timeTaken, mistakes: mistakes,
+      completedAt: completedAt,
+    );
+  }
 }
 
 // ==========================================

@@ -108,50 +108,9 @@ class _StoryModeScreenState extends State<StoryModeScreen> {
                     ),
                   ),
                   actions: [
-  // BOUTON POUR GÉNÉRER LES 50 CHAPITRES
-  IconButton(
-    icon: const Icon(Icons.add_circle),
-    tooltip: 'Générer les chapitres',
-    onPressed: () async {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: Text('Génération des chapitres...'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Création de 50 chapitres en cours...'),
-            ],
-          ),
-        ),
-      );
-      
-      final storyProvider = Provider.of<StoryProvider>(context, listen: false);
-      final result = await storyProvider.initializeChapters();
-      
-      Navigator.of(context).pop(); // Close loading dialog
-      
-      if (result && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ 50 chapitres créés avec succès !'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        storyProvider.loadKingdoms();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur lors de la génération'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    },
-  ),
+  // ✅ Bouton de génération des chapitres retiré : c'est maintenant fait
+  // automatiquement par le serveur au démarrage (contenu global, pas
+  // besoin d'une action de l'utilisateur).
   IconButton(
     icon: const Icon(Icons.bar_chart),
     onPressed: () => _showStatsDialog(context),

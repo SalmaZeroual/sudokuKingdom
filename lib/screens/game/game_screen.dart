@@ -39,6 +39,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
       if (gameProvider.isCompleted) {
         timer.cancel();
+        // ✅ Bug corrigé : le serveur calculait bien le nouvel XP/ligue après
+        // une victoire, mais rien ne rafraîchissait le profil affiché dans
+        // l'app — Profil et Classement continuaient d'afficher l'ancien
+        // total jusqu'au prochain redémarrage complet.
+        Provider.of<AuthProvider>(context, listen: false).loadUser();
         _showVictoryDialog();
       }
     });

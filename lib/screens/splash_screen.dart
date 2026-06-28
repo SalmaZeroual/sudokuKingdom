@@ -7,6 +7,7 @@ import 'tutorial/tutorial_screen.dart';
 // Importez vos services ici
 import '../services/notification_service.dart';
 import '../services/offline_service.dart';
+import '../providers/story_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -57,7 +58,14 @@ class _SplashScreenState extends State<SplashScreen>
       debugPrint("Erreur init services: $e");
     }
 
-    // 2. Vérifier l'authentification
+    // 2. Précharger les données Énigme pendant qu'on est en ligne
+    try {
+      await Provider.of<StoryProvider>(context, listen: false).preloadForOffline();
+    } catch (e) {
+      debugPrint('Préchargement Énigme ignoré: $e');
+    }
+
+    // 3. Vérifier l'authentification
     await _checkAuthAndTutorial();
   }
 

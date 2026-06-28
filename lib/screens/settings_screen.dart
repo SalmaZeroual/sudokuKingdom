@@ -921,12 +921,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showReportBugDialog(BuildContext context) {
+  void _showReportBugDialog(BuildContext screenContext) {
     final controller = TextEditingController();
 
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
+      context: screenContext,
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Signaler un bug'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -945,41 +945,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Annuler'),
           ),
           ElevatedButton(
             onPressed: () async {
               final description = controller.text.trim();
               if (description.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(
                   content: Text('❌ Veuillez décrire le problème'),
                   backgroundColor: AppColors.red,
                 ));
                 return;
               }
 
-              Navigator.of(context).pop();
+              // Ferme la boîte de saisie avec SON PROPRE contexte.
+              Navigator.of(dialogContext).pop();
+
+              // ✅ Bug corrigé : avant, le rond de chargement était ouvert ET
+              // refermé avec le contexte de la boîte de dialogue précédente
+              // (déjà fermée à ce stade) — un contexte "périmé" qui ne
+              // correspondait plus à la bonne route. Le pop échouait alors
+              // silencieusement, et le rond tournait indéfiniment même
+              // quand la requête avait réussi (visible dans le dashboard et
+              // par email). On utilise maintenant le contexte STABLE de
+              // l'écran Paramètres, avec rootNavigator pour cibler à coup
+              // sûr la route du dessus (le rond de chargement).
               showDialog(
-                context: context,
+                context: screenContext,
                 barrierDismissible: false,
-                builder: (context) => const Center(child: CircularProgressIndicator()),
+                builder: (_) => const Center(child: CircularProgressIndicator()),
               );
 
               try {
                 await ApiService().post('/support/report-bug', {'description': description});
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                if (screenContext.mounted) {
+                  Navigator.of(screenContext, rootNavigator: true).pop();
+                  ScaffoldMessenger.of(screenContext).showSnackBar(const SnackBar(
                     content: Text('✅ Bug signalé avec succès ! Merci pour votre retour.'),
                     backgroundColor: AppColors.green,
                     duration: Duration(seconds: 3),
                   ));
                 }
               } catch (e) {
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                if (screenContext.mounted) {
+                  Navigator.of(screenContext, rootNavigator: true).pop();
+                  ScaffoldMessenger.of(screenContext).showSnackBar(SnackBar(
                     content: Text('❌ Erreur : ${e.toString()}'),
                     backgroundColor: AppColors.red,
                     duration: const Duration(seconds: 3),

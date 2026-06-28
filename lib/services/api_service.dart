@@ -117,6 +117,19 @@ class ApiService {
     }
   }
 
+  // ─── Annonces admin ───────────────────────────────────────────────────────
+  // Récupère la dernière annonce publiée depuis le dashboard admin.
+  // Retourne null si aucune annonce ou si hors ligne.
+  Future<Map<String, dynamic>?> getLatestAnnouncement() async {
+    try {
+      final response = await get('/public/announcement');
+      if (response == null || response is! Map) return null;
+      return Map<String, dynamic>.from(response as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<dynamic> delete(String endpoint, {Map<String, dynamic>? body}) async {
     try {
       final headers = await _getHeaders();

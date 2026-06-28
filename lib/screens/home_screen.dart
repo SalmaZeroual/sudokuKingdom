@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/game_provider.dart';
 import '../config/theme.dart';
 import '../widgets/mode_card.dart';
@@ -143,7 +145,58 @@ class _HomeContentState extends State<_HomeContent> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForActiveGame();
+      _checkAnnouncement();
     });
+  }
+
+  // Vérifie s'il y a une nouvelle annonce admin à afficher
+  Future<void> _checkAnnouncement() async {
+    try {
+      final apiService = ApiService();
+      final announcement = await apiService.getLatestAnnouncement();
+      if (announcement == null || !mounted) return;
+
+      final announcementId = announcement['id']?.toString() ?? '';
+      final prefs = await SharedPreferences.getInstance();
+      final lastSeenId = prefs.getString('last_seen_announcement') ?? '';
+
+      // Afficher seulement si c'est une annonce qu'on n'a pas encore vue
+      if (announcementId.isNotEmpty && announcementId != lastSeenId) {
+        await prefs.setString('last_seen_announcement', announcementId);
+        if (!mounted) return;
+        _showAnnouncementDialog(
+          title: announcement['title']?.toString() ?? 'Message',
+          message: announcement['message']?.toString() ?? '',
+        );
+      }
+    } catch (_) {}
+  }
+
+  void _showAnnouncementDialog({required String title, required String message}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Text('📣 ', style: TextStyle(fontSize: 22)),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(fontSize: 15)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   // ✅ GUEST: carte d'invitation à créer un compte

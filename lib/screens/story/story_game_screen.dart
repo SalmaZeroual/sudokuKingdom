@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math';
 import '../../providers/game_provider.dart';
 import '../../providers/story_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../config/constants.dart';
 import '../../models/story_model.dart';
@@ -938,6 +939,16 @@ class _StoryGameScreenState extends State<StoryGameScreen>
                 _elapsedTime,
                 mistakes,
               );
+
+              // ✅ Bug corrigé : même correction que pour le mode Classique
+              // et le Duel — sans ça, l'XP/la ligue gagnés en terminant un
+              // chapitre n'apparaissaient qu'après un redémarrage complet
+              // de l'app.
+              if (result != null &&
+                  result['offline'] != true &&
+                  context.mounted) {
+                Provider.of<AuthProvider>(context, listen: false).loadUser();
+              }
 
               if (result != null && context.mounted) {
                 if (result['artifact'] != null) {

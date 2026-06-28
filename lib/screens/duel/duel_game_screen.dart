@@ -61,6 +61,9 @@ class _DuelGameScreenState extends State<DuelGameScreen> with TickerProviderStat
         // Check if duel finished
         if (duel.status == 'finished') {
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            // ✅ Même correction que pour le mode Classique : rafraîchir le
+            // profil mis en cache pour que XP/ligue ne restent pas figés.
+            Provider.of<AuthProvider>(context, listen: false).loadUser();
             _showResultDialog(context, duelProvider);
           });
         }

@@ -43,6 +43,26 @@ class StoryProvider with ChangeNotifier {
   bool get isOffline => _isOffline;
   
   // ==========================================
+  // PRELOAD FOR OFFLINE
+  // Appelé dans SplashScreen pour remplir le cache avant toute coupure réseau.
+  // ==========================================
+  Future<void> preloadForOffline() async {
+    try {
+      final response = await _apiService.get('/story/kingdoms');
+      await _cacheKingdoms(response);
+      final prefs = await SharedPreferences.getInstance();
+      for (int k = 1; k <= 5; k++) {
+        try {
+          final chapters = await _apiService.get('/story/chapters?kingdomId=$k');
+          await prefs.setString('$_kCachedChaptersPrefix$k', jsonEncode(chapters));
+        } catch (_) {}
+      }
+    } catch (e) {
+      print('Preload ignoré (hors ligne au démarrage): $e');
+    }
+  }
+
+  // ==========================================
   // LOAD KINGDOMS - Charger tous les royaumes
   // ==========================================
   
@@ -68,20 +88,17 @@ class StoryProvider with ChangeNotifier {
       // ✅ On garde une copie locale pour pouvoir naviguer hors-ligne.
       await _cacheKingdoms(response);
     } catch (error) {
-      // ✅ Bug corrigé : avant, une coupure réseau rendait toute la section
-      // Énigme illisible (erreur générique, liste vide). On retombe
-      // maintenant sur la dernière liste de royaumes connue localement,
-      // avec un indicateur clair "Pas de connexion" plutôt qu'une erreur.
+      // Fallback cache dans tous les cas d'erreur (hors ligne, 401 sans token...)
       if (error is ApiException && error.isOffline) {
         _isOffline = true;
-        final cached = await _loadCachedKingdoms();
-        if (cached != null) {
-          _kingdoms = (cached['kingdoms'] as List)
-              .map((k) => KingdomModel.fromJson(k))
-              .toList();
-          _collectedArtifacts = List<int>.from(cached['artifacts'] ?? []);
-          _stats = StoryStatsModel.fromJson(cached['stats']);
-        }
+      }
+      final cached = await _loadCachedKingdoms();
+      if (cached != null) {
+        _kingdoms = (cached['kingdoms'] as List)
+            .map((k) => KingdomModel.fromJson(k))
+            .toList();
+        _collectedArtifacts = List<int>.from(cached['artifacts'] ?? []);
+        _stats = StoryStatsModel.fromJson(cached['stats']);
       } else {
         _errorMessage = error.toString().replaceAll('Exception: ', '');
       }
@@ -134,15 +151,15 @@ class StoryProvider with ChangeNotifier {
     } catch (error) {
       if (error is ApiException && error.isOffline) {
         _isOffline = true;
-        final prefs = await SharedPreferences.getInstance();
-        final raw = prefs.getString('$_kCachedChaptersPrefix$kingdomId');
-        if (raw != null) {
-          try {
-            _chapters = (jsonDecode(raw) as List)
-                .map((c) => StoryChapter.fromJson(c))
-                .toList();
-          } catch (_) {}
-        }
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_kCachedChaptersPrefix$kingdomId');
+      if (raw != null) {
+        try {
+          _chapters = (jsonDecode(raw) as List)
+              .map((c) => StoryChapter.fromJson(c))
+              .toList();
+        } catch (_) {}
       } else {
         _errorMessage = error.toString().replaceAll('Exception: ', '');
       }
@@ -163,14 +180,44 @@ class StoryProvider with ChangeNotifier {
     
     try {
       final response = await _apiService.get('/story/chapters/$chapterId');
-      
       final chapter = StoryChapter.fromJson(response);
-      
       _isLoading = false;
       notifyListeners();
-      
       return chapter;
     } catch (error) {
+      // Hors ligne : chercher dans le cache disque (royaumes 1-5)
+      final prefs = await SharedPreferences.getInstance();
+      for (int k = 1; k <= 5; k++) {
+        final raw = prefs.getString('$_kCachedChaptersPrefix$k');
+        if (raw == null) continue;
+        try {
+          final list = jsonDecode(raw) as List;
+          for (final item in list) {
+            final ch = StoryChapter.fromJson(item as Map<String, dynamic>);
+            if (ch.id == chapterId) {
+              // La liste de chapitres ne contient pas la grille → générer localement
+              if (ch.grid == null || ch.solution == null) {
+                final gen = OfflineService.instance.generateLocalGrid(ch.difficulty);
+                final complete = StoryChapter(
+                  id: ch.id, kingdomId: ch.kingdomId, chapterId: ch.chapterId,
+                  title: ch.title, description: ch.description,
+                  grid: gen['grid'], solution: gen['solution'],
+                  difficulty: ch.difficulty, chapterOrder: ch.chapterOrder,
+                  storyText: ch.storyText, objectiveText: ch.objectiveText,
+                  isCompleted: ch.isCompleted, isLocked: ch.isLocked,
+                  stars: ch.stars, timeTaken: ch.timeTaken, mistakes: ch.mistakes,
+                );
+                _isLoading = false;
+                notifyListeners();
+                return complete;
+              }
+              _isLoading = false;
+              notifyListeners();
+              return ch;
+            }
+          }
+        } catch (_) {}
+      }
       _errorMessage = error.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
